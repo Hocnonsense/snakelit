@@ -163,7 +163,7 @@ def version_picker(init_ref: str | None, load: LoadRefs, *, key: str = "snakelit
             f"{ref.value_time} ▾" if ref else "▾",
             key=f"{key}-kind-{kind}",
             help=kind.capitalize(),
-            use_container_width=True,
+            width="stretch",
             on_click=state.set_kind,
             args=(kind,),
         )
@@ -194,20 +194,20 @@ def version_picker(init_ref: str | None, load: LoadRefs, *, key: str = "snakelit
             "Prev",
             key=f"{key}-prev",
             disabled=cache.page == 0,
-            use_container_width=True,
+            width="stretch",
             on_click=state.prev_page,
         )
         item.button(
             cache.page_str(),
             key=f"{key}-page",
             disabled=True,
-            use_container_width=True,
+            width="stretch",
         )
         next_.button(
             "Next",
             key=f"{key}-next",
             disabled=not has_more,
-            use_container_width=True,
+            width="stretch",
             on_click=state.next_page,
         )
 
