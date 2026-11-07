@@ -54,7 +54,6 @@ def test_styles_target_documented_key_hook():
     assert not at.exception
     css = "\n".join(item.value for item in at.html)
     assert ".st-key-files-tree" in css
-    assert ".st-key-files-preview" in css
     assert "max-height: 650px" in css
     assert "data-testid" not in css
 

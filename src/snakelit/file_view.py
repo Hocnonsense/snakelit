@@ -9,13 +9,14 @@ plain in-memory mapping.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
 import streamlit as st
+
+from .utils.st_layouts import st_container_maxheight
 
 Preview = Callable[[], Any]
 
@@ -198,33 +199,17 @@ def _render(
             stats.caption(_human_size(child.stat.size))
 
 
-def st_container_maxheight(key: str, **kwargs):
-    """Set a max-height for a container,
-    so tall trees are scrollable while short ones shrink.
-    """
-    safe = re.sub(r"[^a-zA-Z0-9_-]", "-", key)
-    height = kwargs.pop("height", 650)
-    st.html(f"""<style>
-        .st-key-{safe} {{
-            max-height: {height}px;
-            overflow-y: auto;
-        }}
-        </style>""")
-    return st.container(key=safe, **kwargs)
-
-
 def file_view(
     files: Mapping[str, File], *, key: str = "snakelit-files", header="Files"
 ):
     """Render ``files`` as a collapsible tree with a preview panel."""
     st.subheader(header)
     state = _state(key)
-    safe = re.sub(r"[^a-zA-Z0-9_-]", "-", key)
-    with st_container_maxheight(f"{safe}-tree"):
+    with st_container_maxheight(f"{key}-tree"):
         _render(_tree(files), files, key, state)
     if state["preview"]:
         child = files[state["preview"]]
         if child.preview:
             st.markdown(f"Preview `{state['preview']}`")
-            with st_container_maxheight(f"{safe}-preview"):
+            with st_container_maxheight(f"{key}-preview"):
                 child.preview()
