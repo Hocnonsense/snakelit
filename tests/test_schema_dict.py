@@ -149,9 +149,7 @@ def test_text_mode_shows_the_schema_read_only():
     assert "samples: samples.tsv" in (
         _by_key(at.text_area, "cfg-editor-yaml").value or ""
     )
-    viewer = _by_key(at.text_area, "cfg-editor-schema")
-    assert "properties" in (viewer.value or "")
-    assert viewer.disabled
+    assert any("properties" in (item.value or "") for item in at.code)
 
 
 def test_text_mode_is_validated_against_the_schema():
@@ -233,3 +231,36 @@ def test_broken_text_opens_in_the_text_editor_and_can_be_repaired():
 
     assert at.session_state["errors"] == []
     assert at.session_state["updated"] == "a: 2\n"
+
+
+FILE_SCRIPT = """
+import streamlit as st
+from snakelit.editors import schema_dict
+
+if "clicked" not in st.session_state:
+    st.session_state["clicked"] = []
+errors = []
+schema_dict(
+    "samples: config/samples.tsv\\nmode: fast\\n",
+    errors,
+    {
+        "type": "object",
+        "properties": {"samples": {"type": "string"}, "mode": {"type": "string"}},
+    },
+    key="f",
+    edit_file=st.session_state["clicked"].append,
+)
+"""
+
+
+def test_path_values_get_a_file_button_that_reports_the_path():
+    at = _app(FILE_SCRIPT)
+
+    edit = _by_key(at.button, "f-samples-file")
+    assert edit.label == "Edit"
+    assert not any(item.key == "f-mode-file" for item in at.button)
+
+    edit.click()
+    at.run()
+
+    assert at.session_state["clicked"] == ["config/samples.tsv"]

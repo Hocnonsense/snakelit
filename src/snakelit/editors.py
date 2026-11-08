@@ -9,7 +9,8 @@ the schema; nothing in here edits or writes it.
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+import re
+from typing import Any, Callable, Mapping
 
 import streamlit as st
 
@@ -23,6 +24,12 @@ from .utils.schema import (
 from .utils.yaml import SCIENTIFIC_FLOAT, dump, load
 
 
+def _looks_like_path(value: str):
+    if not value or "://" in value or any(char.isspace() for char in value):
+        return False
+    return "/" in value or bool(re.search(r"\.[A-Za-z][A-Za-z0-9]*$", value))
+
+
 def schema_dict(
     text: str,
     errors: list[str],
@@ -30,6 +37,7 @@ def schema_dict(
     header="Configuration Editor",
     *,
     key: str = "dict",
+    edit_file: Callable[[str], None] | None = None,
 ):
     """Render an editor for a config file and return the new text.
 
@@ -37,6 +45,10 @@ def schema_dict(
     the value elsewhere; a raw YAML editor is always offered as the
     alternative.  ``errors`` is filled in place.  Returns ``None`` when the
     text did not change or is not valid, so the caller can skip writing it.
+
+    With ``edit_file``, a string value that looks like a path gets a button
+    that calls it with the path string; the host decides whether to create,
+    open or ignore the file.
     """
     height = 420
     probe: list[str] = []
@@ -57,7 +69,7 @@ def schema_dict(
             # formatting must survive an untouched form.
             original = dump(config)
             with st_container_maxheight(f"{key}-form-container", height=height):
-                create_form(config, schema, "", key)
+                create_form(config, schema, "", key, edit_file)
             before = len(errors)
             errors.extend(validate(config, schema))
             if len(errors) > before:
@@ -82,13 +94,7 @@ def _text_editor(
     editor = st
     if is_schema(schema):
         editor, viewer = st.columns([2, 1])
-        viewer.text_area(
-            "Schema (read-only)",
-            value=dump(schema),
-            key=f"{key}-editor-schema",
-            height=height,
-            disabled=True,
-        )
+        viewer.code(dump(schema), "yaml", height=height)
 
     edited = editor.text_area(
         "YAML", value=text, key=f"{key}-editor-yaml", height=height
@@ -113,6 +119,7 @@ def create_form(
     schema: Mapping[str, Any] | None,
     path: str = "",
     key: str = "dict",
+    edit_file: Callable[[str], None] | None = None,
 ):
     """Render widgets for ``config`` in place, in configuration order.
 
@@ -129,7 +136,7 @@ def create_form(
             with st.container(border=True):
                 st.markdown(f"**{name}**")
                 if subschema is None or is_schema(subschema):
-                    create_form(value, subschema, _path(path, name), key)
+                    create_form(value, subschema, _path(path, name), key, edit_file)
                 else:
                     config[name] = _raw(value, name, f"{key}-{_path(path, name)}", None)
             continue
@@ -140,6 +147,7 @@ def create_form(
             key,
             label=name,
             required=name in required,
+            edit_file=edit_file,
         )
 
 
@@ -151,6 +159,7 @@ def _value(
     *,
     label: str,
     required: bool,
+    edit_file: Callable[[str], None] | None = None,
 ):
     widget_key = f"{key}-{path}"
     help_text = schema.get("description")
@@ -185,14 +194,40 @@ def _value(
         return _number(value, ["number"], caption, widget_key, help_text)
 
     if "string" in types or not types or value is None:
-        return _text(value, caption, widget_key, help_text, nullable="null" in types)
+        return _text(
+            value,
+            caption,
+            widget_key,
+            help_text,
+            nullable="null" in types,
+            edit_file=edit_file,
+        )
 
     return _raw(value, caption, widget_key, help_text)
 
 
-def _text(value, caption: str, key: str, help_text: str | None, *, nullable: bool):
+def _text(
+    value,
+    caption: str,
+    key: str,
+    help_text: str | None,
+    *,
+    nullable: bool,
+    edit_file: Callable[[str], None] | None = None,
+):
     text = "" if value is None else str(value)
-    edited = st.text_input(caption, value=text, key=key, help=help_text)
+    if edit_file is None or not _looks_like_path(text):
+        edited = st.text_input(caption, value=text, key=key, help=help_text)
+    else:
+        field, action = st.columns([5, 1], vertical_alignment="bottom")
+        edited = field.text_input(caption, value=text, key=key, help=help_text)
+        action.button(
+            "Edit",
+            key=f"{key}-file",
+            help=f"Treat `{text}` as a file, and open to edit it",
+            on_click=edit_file,
+            args=(edited or text,),
+        )
     if nullable and not edited.strip():
         return None
     return edited

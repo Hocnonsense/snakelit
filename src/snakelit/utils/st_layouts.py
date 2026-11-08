@@ -19,4 +19,5 @@ def st_container_maxheight(key: str, **kwargs):
             overflow-y: auto;
         }}
         </style>""")
+    kwargs.setdefault("border", True)
     return st.container(key=safe, **kwargs)

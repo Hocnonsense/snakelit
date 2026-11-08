@@ -2,8 +2,67 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any, Callable, Iterable
+
+
+@dataclass(frozen=True)
+class Stat:
+    """What the file tree needs to know about a file."""
+
+    size: int
+    mtime: datetime | None = None
+
+
+class FileStore(ABC):
+    """A collection of POSIX, repo-relative file paths.
+
+    Bytes rather than text: tables and other binaries never have to pass
+    through a lossy ``str`` step.  ``preview`` returns the callable that
+    renders a file, or ``None`` when it cannot be previewed.
+    """
+
+    @abstractmethod
+    def paths(self) -> Iterable[str]:
+        """Return every file path in the store (POSIX, repo-relative)."""
+
+    def tree(self):
+        """Nested view of :meth:`paths` for the file manager.
+
+        Directories are inferred from path prefixes and keyed with a trailing
+        ``/``; leaves are the path strings themselves.  Hosts can override
+        this when they can build the tree more cheaply.
+        """
+        tree: dict[str, Any] = {}
+        for path in self.paths():
+            parts = path.split("/")
+            node = tree
+            for part in parts[:-1]:
+                node = node.setdefault(part + "/", {})
+            node[parts[-1]] = path
+        return tree
+
+    @abstractmethod
+    def stat(self, path: str) -> Stat | None:
+        """Return the file's size and mtime, or ``None`` if it is missing."""
+
+    @abstractmethod
+    def show(self, path: str, mode="Preview") -> Callable | None:
+        """Return the renderer for ``path``, or ``None`` if not showable."""
+
+    @abstractmethod
+    def read(self, path: str) -> bytes | None:
+        """Return the content of ``path``, or ``None`` if it is missing."""
+
+    @abstractmethod
+    def write(self, path: str, data: bytes) -> None:
+        """Write ``data`` to ``path``, creating parents as needed."""
+
+    @abstractmethod
+    def rm(self, path: str) -> None:
+        """Remove the file at ``path``."""
 
 
 @dataclass(frozen=True)
