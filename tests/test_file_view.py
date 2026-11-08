@@ -72,6 +72,8 @@ def _labels(at):
 def _app(script=SCRIPT):
     at = AppTest.from_string(script, default_timeout=60)
     at.run()
+    _button(at, "files-header-files").click()
+    at.run()
     return at
 
 
@@ -183,7 +185,8 @@ st.session_state["value"] = value
 
 
 def test_text_edit_returns_the_value():
-    at = _app(EDIT_SCRIPT)
+    at = AppTest.from_string(EDIT_SCRIPT, default_timeout=60)
+    at.run()
 
     area = next(item for item in at.text_area if item.key == "v-text")
     assert area.value == "old"
