@@ -9,6 +9,7 @@ store.
 from __future__ import annotations
 
 import re
+from functools import partial
 from pathlib import Path
 
 import streamlit as st
@@ -25,7 +26,7 @@ def text_view(text: str, *, language: str | None = None):
     st.code(text, language=language)
 
 
-def text_edit(text: str, key: str) -> str:
+def text_edit(text: str, key: str):
     """Render an editable text area and return its current value.
 
     The key comes from whoever calls this (the file manager passes the path),
@@ -97,13 +98,17 @@ def preview_for(path: str, data: bytes):
     return text_view(text, language=_LANGUAGE_BY_SUFFIX.get(suffix))
 
 
-def edit_for(path: str, data: bytes, key: str):
-    """Render an editor for ``data`` and return the edited bytes.
+def edit_for(path: str, data: bytes, key: str, *, editors=None):
+    """Render an editor for ``data`` and return the current bytes.
 
     Returns ``None`` when the file is not text (images, tables, binaries or
-    undecodable content), so the caller can fall back to a preview.
+    undecodable content), so the caller can fall back to a preview.  YAML
+    mappings use :func:`snakelit.editors.schema_dict`; unchanged or invalid
+    input yields the original bytes so the caller writes nothing.
     """
     suffix = Path(path).suffix.lower().lstrip(".")
+    if editors and suffix in editors:
+        return editors[suffix](path, data, key)
     if suffix in _IMAGE_SUFFIXES:
         return
     if suffix in _TABLE_SUFFIXES:
@@ -133,6 +138,11 @@ def _select(state: dict, path: str):
         state["preview"] = None
     else:
         state["preview"] = path, ()
+
+
+def change_preview(key: str, path: str, args=()):
+    """Select ``path`` in the explorer rendered with ``key``."""
+    _state(key)["preview"] = path, args
 
 
 def _state(key: str) -> dict:
@@ -212,7 +222,7 @@ def _render(store: FileStore, node: dict, key: str, state: dict, base="", depth=
             stats.caption(_human_size(stat.size) if stat is not None else "")
 
 
-def file_view(state: dict, store: FileStore, key: str):
+def file_view(state: dict, store: FileStore, key: str, *, editors=None):
     if not state["preview"]:
         return
     path, args = state["preview"]
@@ -250,7 +260,13 @@ def file_view(state: dict, store: FileStore, key: str):
             preview()
 
 
-def file_explorer(store: FileStore, *, key: str = "snakelit-files", header="Files"):
+def file_explorer(
+    store: FileStore,
+    *,
+    key: str = "snakelit-files",
+    header="Files",
+    editors=None,
+):
     """Render ``store`` as a collapsible tree with a preview panel.
 
     Returns ``change_preview(path, args)``; the host can select a file and
@@ -260,9 +276,6 @@ def file_explorer(store: FileStore, *, key: str = "snakelit-files", header="File
     if toggle_button(header, key=f"{key}-header"):
         with st_container_maxheight(f"{key}-tree"):
             _render(store, store.tree(), key, state)
-    file_view(state, store, key)
+    file_view(state, store, key, editors=editors)
 
-    def change_preview(path: str, args=()):
-        state["preview"] = path, args
-
-    return change_preview
+    return partial(change_preview, key)

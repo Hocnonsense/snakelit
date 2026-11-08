@@ -21,7 +21,15 @@ from .utils.schema import (
     property_schema,
     validate,
 )
-from .utils.yaml import SCIENTIFIC_FLOAT, dump, load
+from .utils.yaml import SCIENTIFIC_FLOAT, dump as dump_yaml, load
+
+
+def _dump(data, format: str):
+    if format == "yaml":
+        return dump_yaml(data)
+    from .utils.json import dump as dump_json
+
+    return dump_json(data)
 
 
 def _looks_like_path(value: str):
@@ -38,6 +46,7 @@ def schema_dict(
     *,
     key: str = "dict",
     edit_file: Callable[[str], None] | None = None,
+    format: str = "yaml",
 ):
     """Render an editor for a config file and return the new text.
 
@@ -48,7 +57,8 @@ def schema_dict(
 
     With ``edit_file``, a string value that looks like a path gets a button
     that calls it with the path string; the host decides whether to create,
-    open or ignore the file.
+    open or ignore the file.  ``format`` is ``"yaml"`` or ``"json"`` and
+    selects the serializer (parsing uses the YAML loader for both).
     """
     height = 420
     probe: list[str] = []
@@ -67,51 +77,41 @@ def schema_dict(
         if mode == "Form":
             # Compare canonical YAML, not the source text: comments and
             # formatting must survive an untouched form.
-            original = dump(config)
+            original = _dump(config, format)
             with st_container_maxheight(f"{key}-form-container", height=height):
                 create_form(config, schema, "", key, edit_file)
             before = len(errors)
             errors.extend(validate(config, schema))
             if len(errors) > before:
                 return None
-            updated = dump(config)
+            updated = _dump(config, format)
             return None if updated == original else updated
 
     # Unparseable input is still editable: the text area is the source of
     # truth and reports its own parse/validation errors.
-    updated = _text_editor(text, schema, errors, key, height=height)
-    return None if updated == text else updated
+    updated = _editor_with_schema(text, schema, key, height=height)
+    probe.clear()
+    parsed = load(updated, probe)
+    if not probe:
+        probe.extend(validate(parsed, schema) if parsed else ())
+        if not probe:
+            return None if updated == text else updated
+    errors.extend(probe)
 
 
-def _text_editor(
+def _editor_with_schema(
     text: str,
     schema: Mapping[str, Any] | None,
-    errors: list[str],
     key: str,
+    *,
     height=420,
 ):
-    """Edit the raw YAML, with the schema beside it when there is one."""
+    """Render the raw text editor, with the schema beside it when given."""
     editor = st
     if is_schema(schema):
         editor, viewer = st.columns([2, 1])
-        viewer.code(dump(schema), "yaml", height=height)
-
-    edited = editor.text_area(
-        "YAML", value=text, key=f"{key}-editor-yaml", height=height
-    )
-    before = len(errors)
-    parsed = load(edited, errors)
-    if len(errors) > before:
-        return None
-    if parsed is None:
-        parsed = {}
-    if not isinstance(parsed, dict):
-        errors.append("The configuration must be a YAML mapping.")
-        return None
-    errors.extend(validate(parsed, schema))
-    if len(errors) > before:
-        return None
-    return edited
+        viewer.code(dump_yaml(schema), "yaml", height=height)
+    return editor.text_area("Text", value=text, key=f"{key}-editor", height=height)
 
 
 def create_form(
@@ -318,7 +318,7 @@ def _array(
 def _raw(value, caption: str, key: str, help_text: str | None):
     edited = st.text_area(
         f"{caption} (YAML)",
-        value=dump(value),
+        value=dump_yaml(value),
         key=key,
         help=help_text,
         height=160,

@@ -146,9 +146,7 @@ def test_text_mode_shows_the_schema_read_only():
     at.run()
 
     assert not at.exception, [str(error.value) for error in at.exception]
-    assert "samples: samples.tsv" in (
-        _by_key(at.text_area, "cfg-editor-yaml").value or ""
-    )
+    assert "samples: samples.tsv" in (_by_key(at.text_area, "cfg-editor").value or "")
     assert any("properties" in (item.value or "") for item in at.code)
 
 
@@ -156,7 +154,7 @@ def test_text_mode_is_validated_against_the_schema():
     at = _app()
     _by_key(at.radio, "cfg-editor-mode").set_value("Text Editor")
     at.run()
-    _by_key(at.text_area, "cfg-editor-yaml").set_value("samples: ''\n")
+    _by_key(at.text_area, "cfg-editor").set_value("samples: ''\n")
     at.run()
 
     assert "samples: required value is empty" in at.session_state["errors"]
@@ -168,7 +166,7 @@ def test_text_mode_returns_no_text_on_invalid_yaml():
     at = _app()
     _by_key(at.radio, "cfg-editor-mode").set_value("Text Editor")
     at.run()
-    _by_key(at.text_area, "cfg-editor-yaml").set_value("samples: [\n")
+    _by_key(at.text_area, "cfg-editor").set_value("samples: [\n")
     at.run()
 
     assert at.session_state["errors"]
@@ -201,7 +199,7 @@ def test_invalid_raw_yaml_returns_no_text():
     at = _app(RAW_SCRIPT)
     _by_key(at.radio, "raw-editor-mode").set_value("Text Editor")
     at.run()
-    _by_key(at.text_area, "raw-editor-yaml").set_value("a: [\n")
+    _by_key(at.text_area, "raw-editor").set_value("a: [\n")
     at.run()
 
     assert at.session_state["errors"]
@@ -223,7 +221,7 @@ def test_broken_text_opens_in_the_text_editor_and_can_be_repaired():
     at = _app(BROKEN_SCRIPT)
 
     assert [item.key for item in at.radio] == []
-    editor = _by_key(at.text_area, "broken-editor-yaml")
+    editor = _by_key(at.text_area, "broken-editor")
     assert editor.value == "a: [\n"
 
     editor.set_value("a: 2\n")
