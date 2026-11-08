@@ -9,7 +9,6 @@ store.
 from __future__ import annotations
 
 import re
-from functools import partial
 from pathlib import Path
 
 import streamlit as st
@@ -125,49 +124,6 @@ def edit_for(path: str, data: bytes, key: str, *, editors=None):
 # -- tree -------------------------------------------------------------------
 
 
-def _toggle(state: set[str], path: str):
-    if path in state:
-        state.remove(path)
-    else:
-        state.add(path)
-
-
-def _select(state: dict, path: str):
-    preview = state.get("preview")
-    if preview and preview[0] == path:
-        state["preview"] = None
-    else:
-        state["preview"] = path, ()
-
-
-def change_preview(key: str, path: str, args=()):
-    """Select ``path`` in the explorer rendered with ``key``."""
-    _state(key)["preview"] = path, args
-
-
-def _state(key: str) -> dict:
-    state_key = f"{key}-state"
-    if state_key not in st.session_state:
-        st.session_state[state_key] = {"open": set(), "preview": None}
-    return st.session_state[state_key]
-
-
-def _aggregate(store: FileStore, node: dict):
-    count = 0
-    size = 0
-    for child in node.values():
-        if isinstance(child, dict):
-            child_count, child_size = _aggregate(store, child)
-            count += child_count
-            size += child_size
-        else:
-            count += 1
-            stat = store.stat(child)
-            if stat is not None:
-                size += stat.size
-    return count, size
-
-
 def _human_size(size: int):
     value = float(size)
     if value < 1024:
@@ -191,91 +147,125 @@ def natural_key(s: str):
     )
 
 
-def _render(store: FileStore, node: dict, key: str, state: dict, base="", depth=0):
-    for name in sorted(node, key=natural_key):
-        namecol, stats = st.columns([3, 1])
-        spacer, content = namecol.columns([depth * 0.1 + 0.001, 1])
-        child = node[name]
-        dir_path = f"{base}{name}" if base else name
-        if isinstance(child, dict):
-            open_ = dir_path in state["open"]
-            content.button(
-                ("▾ " if open_ else "▸ ") + name,
-                key=f"{key}-dir-{dir_path}",
-                on_click=_toggle,
-                args=(state["open"], dir_path),
-            )
-            count, size = _aggregate(store, child)
-            stats.caption(f"{count} files, {_human_size(size)}")
-            if open_:
-                _render(store, child, key, state, dir_path, depth + 1)
+class FileExplorer:
+    """File tree and preview state for one :class:`FileStore`."""
+
+    def __init__(self, key: str, store: FileStore):
+        self.key = key
+        self.store = store
+        self.expand_dirs: set[str] = set()
+        self.preview: tuple[str, tuple] | None = None
+
+    def toggle(self, path: str):
+        """Open or close the directory at ``path``."""
+        if path in self.expand_dirs:
+            self.expand_dirs.remove(path)
         else:
-            path = child
-            content.button(
-                name,
-                key=f"{key}-file-{path}",
-                disabled=store.show(path) is None,
-                on_click=_select,
-                args=(state, path),
-            )
-            stat = store.stat(path)
-            stats.caption(_human_size(stat.size) if stat is not None else "")
+            self.expand_dirs.add(path)
 
+    def select(self, path: str):
+        """Toggle the preview of ``path``."""
+        if self.preview and self.preview[0] == path:
+            self.preview = None
+        else:
+            self.preview = path, ()
 
-def file_view(state: dict, store: FileStore, key: str, *, editors=None):
-    if not state["preview"]:
-        return
-    path, args = state["preview"]
-    mode = "Edit" if "edit" in args else "Preview"
-    exists = store.stat(path) is not None
+    def change_preview(self, path: str, args=()):
+        """Select ``path`` with the arguments its preview understands."""
+        self.preview = path, args
 
-    head, delete, edit = st.columns([3, 1, 1])
-    if mode == "Edit":
-        head.markdown(f"Edit `{path}`" if exists else f"New file `{path}`")
-        if exists:
-            if edit.button("Preview", key=f"{key}-preview-toggle", width="stretch"):
-                state["preview"] = (path, ())
+    def aggregate(self, node: dict):
+        """Count and total size of the files under ``node``."""
+        count = 0
+        size = 0
+        for child in node.values():
+            if isinstance(child, dict):
+                child_count, child_size = self.aggregate(child)
+                count += child_count
+                size += child_size
+            else:
+                count += 1
+                stat = self.store.stat(child)
+                if stat is not None:
+                    size += stat.size
+        return count, size
+
+    def _render(self, node: dict, base="", depth=0):
+        store = self.store
+        key = self.key
+        for name in sorted(node, key=natural_key):
+            namecol, stats = st.columns([3, 1])
+            spacer, content = namecol.columns([depth * 0.1 + 0.001, 1])
+            child = node[name]
+            dir_path = f"{base}{name}" if base else name
+            if isinstance(child, dict):
+                open_ = dir_path in self.expand_dirs
+                content.button(
+                    ("▾ " if open_ else "▸ ") + name,
+                    key=f"{key}-dir-{dir_path}",
+                    on_click=self.toggle,
+                    args=(dir_path,),
+                )
+                count, size = self.aggregate(child)
+                stats.caption(f"{count} files, {_human_size(size)}")
+                if open_:
+                    self._render(child, dir_path, depth + 1)
+            else:
+                path = child
+                content.button(
+                    name,
+                    key=f"{key}-file-{path}",
+                    disabled=store.show(path) is None,
+                    on_click=self.select,
+                    args=(path,),
+                )
+                stat = store.stat(path)
+                stats.caption(_human_size(stat.size) if stat is not None else "")
+
+    def render(self, *, header="Files"):
+        """Render the tree and the preview panel."""
+        if toggle_button(header, key=f"{self.key}-header"):
+            with st_container_maxheight(f"{self.key}-tree"):
+                self._render(self.store.tree())
+        self.preview_panel()
+
+    def preview_panel(self):
+        if not self.preview:
+            return
+        path, args = self.preview
+        mode = "Edit" if "edit" in args else "Preview"
+        exists = self.store.stat(path) is not None
+
+        head, delete, edit = st.columns([3, 1, 1])
+        if mode == "Edit":
+            head.markdown(f"Edit `{path}`" if exists else f"New file `{path}`")
+            if exists:
+                if edit.button(
+                    "Preview", key=f"{self.key}-preview-toggle", width="stretch"
+                ):
+                    self.preview = (path, ())
+                    st.rerun()
+                if delete.button("Delete", key=f"{self.key}-delete", width="stretch"):
+                    self.store.rm(path)
+                    self.preview = None
+                    st.rerun()
+            elif delete.button("Cancel", key=f"{self.key}-cancel", width="stretch"):
+                self.preview = None
                 st.rerun()
-            if delete.button("Delete", key=f"{key}-delete", width="stretch"):
-                store.rm(path)
-                state["preview"] = None
+        else:
+            head.markdown(f"Preview `{path}`")
+            if edit.button(
+                "Edit" if exists else "Create",
+                key=f"{self.key}-edit-toggle",
+                width="stretch",
+            ):
+                self.preview = (path, ("edit",))
                 st.rerun()
-        elif delete.button("Cancel", key=f"{key}-cancel", width="stretch"):
-            state["preview"] = None
-            st.rerun()
-    else:
-        head.markdown(f"Preview `{path}`")
-        if edit.button(
-            "Edit" if exists else "Create", key=f"{key}-edit-toggle", width="stretch"
-        ):
-            state["preview"] = (path, ("edit",))
-            st.rerun()
-        if delete.button("hide", key=f"{key}-hide", width="stretch"):
-            state["preview"] = None
-            st.rerun()
+            if delete.button("hide", key=f"{self.key}-hide", width="stretch"):
+                self.preview = None
+                st.rerun()
 
-    with st_container_maxheight(f"{key}-preview"):
-        preview = store.show(path, mode)
-        if preview is not None:
-            preview()
-
-
-def file_explorer(
-    store: FileStore,
-    *,
-    key: str = "snakelit-files",
-    header="Files",
-    editors=None,
-):
-    """Render ``store`` as a collapsible tree with a preview panel.
-
-    Returns ``change_preview(path, args)``; the host can select a file and
-    pass args that its preview understands (for example an editing mode).
-    """
-    state = _state(key)
-    if toggle_button(header, key=f"{key}-header"):
-        with st_container_maxheight(f"{key}-tree"):
-            _render(store, store.tree(), key, state)
-    file_view(state, store, key, editors=editors)
-
-    return partial(change_preview, key)
+        with st_container_maxheight(f"{self.key}-preview"):
+            preview = self.store.show(path, mode)
+            if preview is not None:
+                preview()

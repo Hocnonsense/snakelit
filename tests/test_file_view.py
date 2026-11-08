@@ -44,21 +44,27 @@ class Store(FileStore):
         self.files.pop(str(path), None)
 """
 
-SCRIPT = STORE + """
+SCRIPT = (
+    STORE
+    + """
 import streamlit as st
 
-from snakelit.file_view import file_explorer
+from snakelit.file_view import FileExplorer
 
-if "store" not in st.session_state:
-    st.session_state["store"] = Store(
-        {
-            "config/config.yaml": b"x: 1\\n",
-            "config/README.md": b"# readme\\n",
-            "LICENSE": b"MIT\\n",
-        }
+if "state" not in st.session_state:
+    st.session_state["state"] = FileExplorer(
+        key="files",
+        store=Store(
+            {
+                "config/config.yaml": b"x: 1\\n",
+                "config/README.md": b"# readme\\n",
+                "LICENSE": b"MIT\\n",
+            }
+        ),
     )
-file_explorer(st.session_state["store"], key="files")
+st.session_state["state"].render()
 """
+)
 
 
 def _button(at, key):
@@ -120,11 +126,18 @@ def test_file_preview_shows_content():
     assert "x: 1" in at.code[0].value
 
 
-BINARY_SCRIPT = STORE + """
-from snakelit.file_view import file_explorer
+BINARY_SCRIPT = (
+    STORE
+    + """
+from snakelit.file_view import FileExplorer
 
-file_explorer(Store({"data.gz": b"\\x1f\\x8b\\x08"}), key="files")
+if "state" not in st.session_state:
+    st.session_state["state"] = FileExplorer(
+        key="files", store=Store({"data.gz": b"\\x1f\\x8b\\x08"})
+    )
+st.session_state["state"].render()
 """
+)
 
 
 def test_binary_preview_does_not_decode():
@@ -136,11 +149,18 @@ def test_binary_preview_does_not_decode():
     assert any("Binary file" in item.value for item in at.caption)
 
 
-TABLE_SCRIPT = STORE + """
-from snakelit.file_view import file_explorer
+TABLE_SCRIPT = (
+    STORE
+    + """
+from snakelit.file_view import FileExplorer
 
-file_explorer(Store({"data.csv": b"a,b\\n1,2\\n"}), key="files")
+if "state" not in st.session_state:
+    st.session_state["state"] = FileExplorer(
+        key="files", store=Store({"data.csv": b"a,b\\n1,2\\n"})
+    )
+st.session_state["state"].render()
 """
+)
 
 
 def test_table_preview_reads_csv():
