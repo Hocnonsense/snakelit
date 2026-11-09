@@ -34,22 +34,21 @@ class FileStore(ABC):
     """
 
     @abstractmethod
-    def paths(self) -> Iterable[str]:
+    def paths(self, dir="") -> Iterable[str]:
         """Return every file path in the store (POSIX, repo-relative)."""
 
     def tree(self):
         """Nested view of :meth:`paths` for the file manager.
 
-        Directories are inferred from path prefixes and keyed with a trailing
-        ``/``; leaves are the path strings themselves.  Hosts can override
-        this when they can build the tree more cheaply.
+        Directories are the dicts; leaves are the path strings themselves.
+        Hosts can override this when they can build the tree more cheaply.
         """
         tree: dict[str, Any] = {}
         for path in self.paths():
             parts = path.split("/")
             node = tree
             for part in parts[:-1]:
-                node = node.setdefault(part + "/", {})
+                node = node.setdefault(part, {})
             node[parts[-1]] = path
         return tree
 
