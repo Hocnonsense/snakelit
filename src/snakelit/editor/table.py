@@ -1,10 +1,10 @@
 """Editable Polars-backed table widgets.
 
-A table is identified by ``key``; its current data lives in
-``st.session_state[f"{key}-data"]``.  ``column_controls`` renders icon
-add/rename/remove/reorder popovers that edit that entry; ``editable_table``
-wraps ``st.data_editor`` and returns the edited frame.  ``schema_table`` adds
-optional row-schema coercion and validation.
+``form_table`` seeds ``st.data_editor`` from the frame it is given; the
+editor's widget state carries the edits, and the caller decides where the
+returned frame goes.  ``column_controls`` renders icon add/rename/remove/move
+popovers that replace the frame before it is edited.  ``schema_table`` adds
+optional row-schema coercion and validation on top of a bytes value.
 """
 
 from __future__ import annotations
@@ -97,25 +97,29 @@ def form_table(
     *,
     key: str = "table",
     column_config: Mapping | None = None,
-    reset: bool = False,
 ):
     """Edit ``frame`` and return the edited frame.
 
-    With ``schema``, columns are coerced to its declared dtypes and every row
-    is validated; ``errors`` is filled in place.  The schema itself is
-    read-only: it never edits columns, it only constrains types and validation.
+    With ``schema``, cells carry its declared dtypes and every row is validated;
+    the schema itself is never edited.
     """
     data_key = f"{key}-data"
-    if reset or data_key not in st.session_state:
-        seed = frame
-        if schema:
-            seed, _ = coerce_frame(frame, schema, errors)
-        st.session_state[data_key] = seed
+    if schema:
+        # input frame is loaded without schema (default strings for csv/tsv),
+        # so coerce it to the schema before comparing.
+        frame, _ = coerce_frame(frame, schema, errors)
 
-    changes = column_controls(key)
-    edited = editable_table(key, column_config=column_config, reset=bool(changes))
+    current: pl.DataFrame | None = st.session_state.get(data_key)
+    if current is None or not current.equals(frame):
+        # The host's frame is the truth: refresh the copy whenever it changed,
+        # so an unmounted editor or a document changed elsewhere cannot leave
+        # stale rows behind.
+        st.session_state[data_key] = frame
+    column_controls(key)
+    edited = editable_table(key, column_config=column_config)
 
     if schema:
+        # strip and format the edited frame to save correctly.
         edited, _ = coerce_frame(edited, schema, errors)
         st.session_state[data_key] = edited
         errors.extend(table_errors(edited, schema))
@@ -149,26 +153,19 @@ def editable_table(
     *,
     column_config: Mapping | None = None,
     drop_empty: bool = True,
-    reset: bool = False,
 ) -> pl.DataFrame:
     """Render ``st.data_editor`` for ``st.session_state[f"{key}-data"]``.
 
-    Edits accumulate against a stable base (``{key}-base``) rather than being
-    re-fed as the editor input, which would lag by one run.  Pass
-    ``reset=True`` when the table is replaced programmatically.
+    The editor is seeded from that copy every run; its widget state carries the
+    edits and the result is written back to the copy.
     """
     data_key = f"{key}-data"
-    base_key = f"{key}-base"
-    revision_key = f"{key}-revision"
-    if reset or base_key not in st.session_state:
-        st.session_state[base_key] = st.session_state[data_key]
-        st.session_state[revision_key] = st.session_state.get(revision_key, 0) + 1
     edited = st.data_editor(
-        st.session_state[base_key].to_pandas(),
+        st.session_state[data_key].to_pandas(),
         num_rows="dynamic",
         width="stretch",
         hide_index=True,
-        key=f"{key}-{st.session_state[revision_key]}",
+        key=f"{key}-editor",
         column_config=column_config,
     )
     result = pl.from_pandas(edited)

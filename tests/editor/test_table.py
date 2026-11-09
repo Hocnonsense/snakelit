@@ -17,6 +17,7 @@ if "frame" not in st.session_state:
 errors = []
 edited = form_table(st.session_state["frame"], errors, key="t")
 st.session_state["edited"] = edited
+st.session_state["frame"] = edited
 st.session_state["errors"] = errors
 """
 
@@ -176,3 +177,62 @@ def test_schema_table_does_not_read_the_row_schema_as_dtypes():
 
     assert at.session_state["errors"] == []
     assert at.session_state["updated"] is None
+
+
+RERENDER_SCRIPT = """
+import polars as pl
+import streamlit as st
+from snakelit.editor.table import form_table
+
+if "frame" not in st.session_state:
+    st.session_state["frame"] = pl.DataFrame({"sample": ["a"]})
+if "visible" not in st.session_state:
+    st.session_state["visible"] = True
+errors = []
+if st.session_state["visible"]:
+    edited = form_table(st.session_state["frame"], errors, key="t")
+    st.session_state["edited"] = edited
+"""
+
+
+def test_form_uses_the_current_frame_after_its_editor_closed():
+    import polars as pl
+
+    at = _app(RERENDER_SCRIPT)
+    assert at.session_state["edited"].to_dict(as_series=False) == {"sample": ["a"]}
+
+    at.session_state["visible"] = False
+    at.run()
+
+    at.session_state["frame"] = pl.DataFrame({"sample": ["b"]})
+    at.session_state["visible"] = True
+    at.run()
+
+    assert at.session_state["edited"].to_dict(as_series=False) == {"sample": ["b"]}
+
+
+COERCED_SCRIPT = """
+import polars as pl
+import streamlit as st
+from snakelit.editor.table import form_table
+
+SCHEMA = {"type": "object", "properties": {"count": {"type": "integer"}}}
+if "frame" not in st.session_state:
+    st.session_state["frame"] = pl.DataFrame({"count": ["1"]})
+errors = []
+edited = form_table(st.session_state["frame"], errors, SCHEMA, key="t")
+st.session_state["edited"] = edited
+"""
+
+
+def test_form_table_coerces_before_and_keeps_the_copy_typed():
+    import polars as pl
+
+    at = _app(COERCED_SCRIPT)
+
+    assert at.session_state["edited"].schema["count"] == pl.Int64
+    assert at.session_state["t-data"].schema["count"] == pl.Int64
+
+    at.run()
+
+    assert at.session_state["edited"].schema["count"] == pl.Int64
