@@ -91,26 +91,30 @@ def preview_for(path: str, data: bytes):
     return text_view(text, language=_LANGUAGE_BY_SUFFIX.get(suffix))
 
 
-def edit_for(path: str, data: bytes, key: str, *, editors=None):
-    """Render an editor for ``data`` and return the current bytes.
+def edit_for(path: str, store: FileStore, key: str, *, editors=None):
+    """Render ``path``'s editor and write the result back to ``store``.
 
-    Returns ``None`` when the file is not text (images, tables, binaries or
-    undecodable content), so the caller can fall back to a preview.  YAML
-    mappings use :func:`snakelit.editors.schema_dict`; unchanged or invalid
-    input yields the original bytes so the caller writes nothing.
+    The editor is chosen by suffix: a host-provided one from ``editors`` when
+    available, a plain text area for other text, nothing for images and
+    binaries.  A host editor that leaves the file unchanged returns the
+    original bytes, so nothing is written.  Missing files start empty, so the
+    same call creates them; a successful change writes and reruns.
     """
+    content = store.read(path) or b""
     suffix = Path(path).suffix.lower().lstrip(".")
     if editors and suffix in editors:
-        return editors[suffix](path, data, key)
-    if suffix in _IMAGE_SUFFIXES:
+        edited = editors[suffix](path, content, key)
+    elif suffix in _IMAGE_SUFFIXES or suffix in _BINARY_SUFFIXES:
         return
-    if suffix in _BINARY_SUFFIXES:
-        return
-    try:
-        text = data.decode("utf-8")
-    except UnicodeDecodeError:
-        return
-    return text_edit(text=text, key=key).encode("utf-8")
+    else:
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            return
+        edited = text_edit(text=text, key=key).encode("utf-8")
+    if edited is not None and edited != content:
+        store.write(path, edited)
+        st.rerun()
 
 
 # -- tree -------------------------------------------------------------------
@@ -226,6 +230,9 @@ class FileExplorer:
             return
         path, args = self.preview
         mode = "Edit" if "edit" in args else "Preview"
+        preview = self.store.show(path, mode)
+        if preview is None:
+            return
         exists = self.store.stat(path) is not None
 
         head, delete, edit = st.columns([3, 1, 1])
@@ -258,6 +265,4 @@ class FileExplorer:
                 st.rerun()
 
         with st_container_maxheight(f"{self.key}-preview"):
-            preview = self.store.show(path, mode)
-            if preview is not None:
-                preview()
+            preview()
