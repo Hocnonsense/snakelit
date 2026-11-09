@@ -14,6 +14,7 @@ from pathlib import Path
 import streamlit as st
 
 from .types import FileStore
+from .utils.table import TABLE_SUFFIXES, read as read_table
 from .utils.st_layouts import st_container_maxheight
 from .utils.ui_components import toggle_button
 
@@ -39,24 +40,7 @@ def image_view(data: bytes):
 
 
 def table_view(data: bytes, *, format: str = "csv", **read_kwargs):
-    import io
-
-    try:
-        import polars as pl
-    except ImportError:
-        st.error("polars is not installed; cannot preview tables.")
-        return
-    try:
-        buffer = io.BytesIO(data)
-        if format == "parquet":
-            frame = pl.read_parquet(buffer, **read_kwargs)
-        elif format == "tsv":
-            frame = pl.read_csv(buffer, separator="	", **read_kwargs)
-        else:
-            frame = pl.read_csv(buffer, **read_kwargs)
-    except Exception as error:  # noqa: BLE001 - shown to the user
-        st.error(f"Could not read table: {error}")
-        return
+    frame = read_table(data, suffix=format, **read_kwargs)
     st.dataframe(frame, hide_index=True, width="stretch")
 
 
@@ -65,8 +49,18 @@ def binary_view(data: bytes):
 
 
 _IMAGE_SUFFIXES = {"png", "jpg", "jpeg", "gif", "webp", "svg"}
-_TABLE_SUFFIXES = {"csv", "tsv", "parquet"}
-_BINARY_SUFFIXES = {"bin", "dat", "exe", "dll", "so", "o", "a", "class"}
+_BINARY_SUFFIXES = {
+    "bin",
+    "dat",
+    "exe",
+    "dll",
+    "so",
+    "o",
+    "a",
+    "class",
+    "xlsx",
+    "parquet",
+}
 _LANGUAGE_BY_SUFFIX = {
     "yaml": "yaml",
     "yml": "yaml",
@@ -86,7 +80,7 @@ def preview_for(path: str, data: bytes):
     suffix = Path(path).suffix.lower().lstrip(".")
     if suffix in _IMAGE_SUFFIXES:
         return image_view(data)
-    if suffix in _TABLE_SUFFIXES:
+    if suffix in TABLE_SUFFIXES:
         return table_view(data, format=suffix)
     if suffix in _BINARY_SUFFIXES:
         return binary_view(data)
@@ -109,8 +103,6 @@ def edit_for(path: str, data: bytes, key: str, *, editors=None):
     if editors and suffix in editors:
         return editors[suffix](path, data, key)
     if suffix in _IMAGE_SUFFIXES:
-        return
-    if suffix in _TABLE_SUFFIXES:
         return
     if suffix in _BINARY_SUFFIXES:
         return

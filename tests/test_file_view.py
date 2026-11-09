@@ -44,9 +44,7 @@ class Store(FileStore):
         self.files.pop(str(path), None)
 """
 
-SCRIPT = (
-    STORE
-    + """
+SCRIPT = STORE + """
 import streamlit as st
 
 from snakelit.file_view import FileExplorer
@@ -64,7 +62,6 @@ if "state" not in st.session_state:
     )
 st.session_state["state"].render()
 """
-)
 
 
 def _button(at, key):
@@ -126,9 +123,7 @@ def test_file_preview_shows_content():
     assert "x: 1" in at.code[0].value
 
 
-BINARY_SCRIPT = (
-    STORE
-    + """
+BINARY_SCRIPT = STORE + """
 from snakelit.file_view import FileExplorer
 
 if "state" not in st.session_state:
@@ -137,7 +132,6 @@ if "state" not in st.session_state:
     )
 st.session_state["state"].render()
 """
-)
 
 
 def test_binary_preview_does_not_decode():
@@ -149,9 +143,7 @@ def test_binary_preview_does_not_decode():
     assert any("Binary file" in item.value for item in at.caption)
 
 
-TABLE_SCRIPT = (
-    STORE
-    + """
+TABLE_SCRIPT = STORE + """
 from snakelit.file_view import FileExplorer
 
 if "state" not in st.session_state:
@@ -160,7 +152,6 @@ if "state" not in st.session_state:
     )
 st.session_state["state"].render()
 """
-)
 
 
 def test_table_preview_reads_csv():

@@ -39,7 +39,7 @@ def _looks_like_path(value: str):
 
 
 def schema_dict(
-    text: str,
+    data: bytes,
     errors: list[str],
     schema: Mapping[str, Any] | None = None,
     header="Configuration Editor",
@@ -48,7 +48,7 @@ def schema_dict(
     edit_file: Callable[[str], None] | None = None,
     format: str = "yaml",
 ):
-    """Render an editor for a config file and return the new text.
+    """Render an editor for a config file and return the new bytes.
 
     Widgets follow ``schema`` where it describes a key and are inferred from
     the value elsewhere; a raw YAML editor is always offered as the
@@ -60,6 +60,7 @@ def schema_dict(
     open or ignore the file.  ``format`` is ``"yaml"`` or ``"json"`` and
     selects the serializer (parsing uses the YAML loader for both).
     """
+    text = data.decode("utf-8")
     height = 420
     probe: list[str] = []
     config = load(text, probe)
@@ -85,7 +86,7 @@ def schema_dict(
             if len(errors) > before:
                 return None
             updated = _dump(config, format)
-            return None if updated == original else updated
+            return None if updated == original else updated.encode("utf-8")
 
     # Unparseable input is still editable: the text area is the source of
     # truth and reports its own parse/validation errors.
@@ -95,7 +96,7 @@ def schema_dict(
     if not probe:
         probe.extend(validate(parsed, schema) if parsed else ())
         if not probe:
-            return None if updated == text else updated
+            return None if updated == text else updated.encode("utf-8")
     errors.extend(probe)
 
 

@@ -39,10 +39,12 @@ SCHEMA = {
 }
 
 errors = []
-updated = schema_dict(dump(CONFIG), errors, SCHEMA, key="cfg")
+updated = schema_dict(dump(CONFIG).encode(), errors, SCHEMA, key="cfg")
 st.session_state["updated"] = updated
 st.session_state["errors"] = errors
-st.session_state["edited"] = load(updated) if updated is not None else CONFIG
+st.session_state["edited"] = (
+    load(updated.decode()) if updated is not None else CONFIG
+)
 """
 
 
@@ -181,10 +183,12 @@ from snakelit.utils.yaml import dump, load
 CONFIG = {"a": 1}
 
 errors = []
-updated = schema_dict(dump(CONFIG), errors, None, key="raw")
+updated = schema_dict(dump(CONFIG).encode(), errors, None, key="raw")
 st.session_state["updated"] = updated
 st.session_state["errors"] = errors
-st.session_state["edited"] = load(updated) if updated is not None else CONFIG
+st.session_state["edited"] = (
+    load(updated.decode()) if updated is not None else CONFIG
+)
 """
 
 
@@ -211,7 +215,7 @@ import streamlit as st
 from snakelit.editors import schema_dict
 
 errors = []
-updated = schema_dict("a: [\\n", errors, None, key="broken")
+updated = schema_dict(b"a: [\\n", errors, None, key="broken")
 st.session_state["updated"] = updated
 st.session_state["errors"] = errors
 """
@@ -228,7 +232,7 @@ def test_broken_text_opens_in_the_text_editor_and_can_be_repaired():
     at.run()
 
     assert at.session_state["errors"] == []
-    assert at.session_state["updated"] == "a: 2\n"
+    assert at.session_state["updated"] == b"a: 2\n"
 
 
 FILE_SCRIPT = """
@@ -239,7 +243,7 @@ if "clicked" not in st.session_state:
     st.session_state["clicked"] = []
 errors = []
 schema_dict(
-    "samples: config/samples.tsv\\nmode: fast\\n",
+    b"samples: config/samples.tsv\\nmode: fast\\n",
     errors,
     {
         "type": "object",
