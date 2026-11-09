@@ -45,7 +45,7 @@ def schema_table(
     height = 420
     # A file that cannot be read is not an error yet: the text editor takes
     # over below, so this probe keeps its failures to itself.
-    table = load(data, suffix=format, schema=schema, errors=[])
+    table = load(data, suffix=format, errors=[])
     textable = format in ("csv", "tsv")
     if table is not None:
         if (
@@ -62,9 +62,12 @@ def schema_table(
             before = len(errors)
             with st_container_maxheight(f"{key}-form-container", height=height):
                 edited = form_table(table, errors, schema, key=key)
-            if len(errors) > before or edited.equals(table):
+            if len(errors) > before:
                 return None
-            return dump(edited, format)
+            # Compare canonical bytes: coercion changes dtypes without changing
+            # the values, and an untouched form must not rewrite the table.
+            updated = dump(edited, format)
+            return None if updated == dump(table, format) else updated
     elif not textable:
         st.error(f"Cannot edit broken {format.upper()} table as text.")
         return None
@@ -76,7 +79,7 @@ def schema_table(
         return None
     updated = schema_text_editor(text, schema, key, height=height)
     before = len(errors)
-    parsed = load(updated.encode("utf-8"), suffix=format, schema=schema, errors=errors)
+    parsed = load(updated.encode("utf-8"), suffix=format, errors=errors)
     if parsed is None:
         return None
     if schema:

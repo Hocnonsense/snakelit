@@ -145,3 +145,34 @@ st.session_state["updated"] = updated
 
     assert not at.exception
     assert at.session_state["updated"] is None
+
+
+ROW_SCHEMA_SCRIPT = """
+import streamlit as st
+from snakelit.editor.table import schema_table
+
+SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "properties": {"sample": {"type": "string"}, "count": {"type": "integer"}},
+}
+errors = []
+updated = schema_table(b"sample\\tcount\\na\\t1\\n", errors, SCHEMA, key="t", format="tsv")
+st.session_state["errors"] = errors
+st.session_state["updated"] = updated
+"""
+
+
+def test_schema_table_does_not_read_the_row_schema_as_dtypes():
+    at = _app(ROW_SCHEMA_SCRIPT)
+
+    assert not at.exception
+    assert at.session_state["errors"] == []
+    assert at.radio(key="t-editor-mode").value == "Form"
+    assert at.session_state["updated"] is None
+
+    at.radio(key="t-editor-mode").set_value("Text Editor")
+    at.run()
+
+    assert at.session_state["errors"] == []
+    assert at.session_state["updated"] is None
