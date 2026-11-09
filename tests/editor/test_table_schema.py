@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from snakelit.tables.schema import (  # noqa: E402
+from snakelit.editor.table_schema import (  # noqa: E402
     coerce_frame,
     field_dtypes,
     schema_columns,

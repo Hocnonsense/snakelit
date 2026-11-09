@@ -9,126 +9,13 @@ store.
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 import streamlit as st
 
 from .types import FileStore
-from .utils.table import TABLE_SUFFIXES, read as read_table
+from .utils.format import human_size
 from .utils.st_layouts import st_container_maxheight
 from .utils.ui_components import toggle_button
-
-# -- preset previews --------------------------------------------------------
-
-
-def text_view(text: str, *, language: str | None = None):
-    """Render text."""
-    st.code(text, language=language)
-
-
-def text_edit(text: str, key: str):
-    """Render an editable text area and return its current value.
-
-    The key comes from whoever calls this (the file manager passes the path),
-    so multiple editable views never collide.
-    """
-    return st.text_area("Content", value=text, key=f"{key}-text", height=420)
-
-
-def image_view(data: bytes):
-    st.image(data)
-
-
-def table_view(data: bytes, *, format: str = "csv", **read_kwargs):
-    frame = read_table(data, suffix=format, **read_kwargs)
-    st.dataframe(frame, hide_index=True, width="stretch")
-
-
-def binary_view(data: bytes):
-    st.caption(f"Binary file · {_human_size(len(data))}")
-
-
-_IMAGE_SUFFIXES = {"png", "jpg", "jpeg", "gif", "webp", "svg"}
-_BINARY_SUFFIXES = {
-    "bin",
-    "dat",
-    "exe",
-    "dll",
-    "so",
-    "o",
-    "a",
-    "class",
-    "xlsx",
-    "parquet",
-}
-_LANGUAGE_BY_SUFFIX = {
-    "yaml": "yaml",
-    "yml": "yaml",
-    "json": "json",
-    "py": "python",
-    "smk": "python",
-    "md": "markdown",
-    "sh": "bash",
-    "toml": "toml",
-    "csv": "csv",
-    "tsv": "tsv",
-}
-
-
-def preview_for(path: str, data: bytes):
-    """Render ``data`` with the preset that matches its suffix."""
-    suffix = Path(path).suffix.lower().lstrip(".")
-    if suffix in _IMAGE_SUFFIXES:
-        return image_view(data)
-    if suffix in TABLE_SUFFIXES:
-        return table_view(data, format=suffix)
-    if suffix in _BINARY_SUFFIXES:
-        return binary_view(data)
-    try:
-        text = data.decode("utf-8")
-    except UnicodeDecodeError:
-        return binary_view(data)
-    return text_view(text, language=_LANGUAGE_BY_SUFFIX.get(suffix))
-
-
-def edit_for(path: str, store: FileStore, key: str, *, editors=None):
-    """Render ``path``'s editor and write the result back to ``store``.
-
-    The editor is chosen by suffix: a host-provided one from ``editors`` when
-    available, a plain text area for other text, nothing for images and
-    binaries.  A host editor that leaves the file unchanged returns the
-    original bytes, so nothing is written.  Missing files start empty, so the
-    same call creates them; a successful change writes and reruns.
-    """
-    content = store.read(path) or b""
-    suffix = Path(path).suffix.lower().lstrip(".")
-    if editors and suffix in editors:
-        edited = editors[suffix](path, content, key)
-    elif suffix in _IMAGE_SUFFIXES or suffix in _BINARY_SUFFIXES:
-        return
-    else:
-        try:
-            text = content.decode("utf-8")
-        except UnicodeDecodeError:
-            return
-        edited = text_edit(text=text, key=key).encode("utf-8")
-    if edited is not None and edited != content:
-        store.write(path, edited)
-        st.rerun()
-
-
-# -- tree -------------------------------------------------------------------
-
-
-def _human_size(size: int):
-    value = float(size)
-    if value < 1024:
-        return f"{value} B"
-    for unit in ("KB", "MB", "GB"):
-        value /= 1024
-        if value < 1024:
-            return f"{value:.1f} {unit}"
-    return f"{value} GB"
 
 
 def natural_key(s: str):
@@ -203,7 +90,7 @@ class FileExplorer:
                     args=(dir_path,),
                 )
                 count, size = self.aggregate(child)
-                stats.caption(f"{count} files, {_human_size(size)}")
+                stats.caption(f"{count} files, {human_size(size)}")
                 if open_:
                     self._render(child, dir_path, depth + 1)
             else:
@@ -216,7 +103,7 @@ class FileExplorer:
                     args=(path,),
                 )
                 stat = store.stat(path)
-                stats.caption(_human_size(stat.size) if stat is not None else "")
+                stats.caption(human_size(stat.size) if stat is not None else "")
 
     def render(self, *, header="Files"):
         """Render the tree and the preview panel."""

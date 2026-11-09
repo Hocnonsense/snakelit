@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 SCRIPT = """
 import polars as pl
 import streamlit as st
-from snakelit.tables.editor import form_table
+from snakelit.editor.table import form_table
 
 if "frame" not in st.session_state:
     st.session_state["frame"] = pl.DataFrame({"sample": ["a"], "count": [1]})
@@ -68,7 +68,7 @@ def test_column_operations_return_the_edited_table():
 SCHEMA_SCRIPT = """
 import polars as pl
 import streamlit as st
-from snakelit.tables.editor import form_table
+from snakelit.editor.table import form_table
 
 SCHEMA = {
     "type": "object",
@@ -102,7 +102,7 @@ def test_read_and_dump_accept_a_suffix_without_dot():
 def test_schema_table_repairs_broken_tables_in_the_text_editor():
     at = _app("""
 import streamlit as st
-from snakelit.tables.editor import schema_table
+from snakelit.editor.table import schema_table
 
 errors = []
 updated = schema_table(b"a,b\\n1,2,3\\n", errors, None, key="t", format="csv")
@@ -126,7 +126,7 @@ st.session_state["updated"] = updated
 def test_schema_table_refuses_broken_binary_tables():
     at = _app("""
 import streamlit as st
-from snakelit.tables.editor import schema_table
+from snakelit.editor.table import schema_table
 
 errors = []
 updated = schema_table(b"\\x00\\x01", errors, None, key="t", format="parquet")

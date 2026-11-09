@@ -5,7 +5,16 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Mapping
+
+Renderer = Callable[[], None]
+"""What ``FileStore.show`` returns: renders a file into the page."""
+
+Editor = Callable[[str, bytes, str], bytes]
+"""A host editor: ``(path, data, key)`` -> the new bytes (unchanged -> ``data``)."""
+
+Editors = Mapping[str, Editor]
+"""Host editors keyed by file suffix."""
 
 
 @dataclass(frozen=True)
@@ -20,8 +29,8 @@ class FileStore(ABC):
     """A collection of POSIX, repo-relative file paths.
 
     Bytes rather than text: tables and other binaries never have to pass
-    through a lossy ``str`` step.  ``preview`` returns the callable that
-    renders a file, or ``None`` when it cannot be previewed.
+    through a lossy ``str`` step.  ``show`` returns the renderer for a file,
+    or ``None`` when it cannot be shown.
     """
 
     @abstractmethod
@@ -49,7 +58,7 @@ class FileStore(ABC):
         """Return the file's size and mtime, or ``None`` if it is missing."""
 
     @abstractmethod
-    def show(self, path: str, mode="Preview") -> Callable | None:
+    def show(self, path: str, mode="Preview") -> Renderer | None:
         """Return the renderer for ``path``, or ``None`` if not showable."""
 
     @abstractmethod

@@ -1,12 +1,16 @@
+"""Byte-level table reading, writing and dumping (polars is imported lazily)."""
+
+from __future__ import annotations
+
 from pathlib import Path
-from typing import IO, Mapping
+from typing import IO, TYPE_CHECKING, Mapping
 from io import BytesIO
 
-import polars as pl
 import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
-TABLE_SUFFIXES = ("tsv", "csv", "xlsx", "parquet")
+if TYPE_CHECKING:
+    import polars as pl
 
 
 def read(
@@ -33,6 +37,8 @@ def read(
                   ``infer`` (strings or inferred)
     ============ ===================================================
     """
+    import polars as pl
+
     kwargs: dict = dict(
         schema_overrides=dict(schema) if schema else None,
         infer_schema_length=None if infer else 0,
@@ -64,6 +70,8 @@ def enforce_typing(data: pl.DataFrame, schema: dict):
     :returns: The DataFrame with columns cast to the specified types as per the schema.
     :raises polars.InvalidOperationError: If a type conversion fails.
     """
+    import polars as pl
+
     for field, field_info in schema.get("properties", {}).items():
         match field_info["type"]:
             case typing if typing == "string":
@@ -93,6 +101,8 @@ def get_type_specific_default(dtype: pl.DataType):
         - `0` for integer columns.
         - None for unsupported data types.
     """
+    import polars as pl
+
     if dtype in ("String", pl.Utf8):
         return ""
     if dtype in ("Float64", pl.Float64):
@@ -112,6 +122,7 @@ def load(file: UploadedFile | Path, source: str = "file"):
     :raises FileNotFoundError: If the file does not exist when source is 'file'.
     :raises StreamlitError: For unsupported file formats or missing files.
     """
+    import polars as pl
 
     def read_data(file: UploadedFile | Path, file_type: str):
         if file_type in ["text/tab-separated-values", ".tsv"]:
@@ -150,6 +161,8 @@ def save(data: pl.DataFrame, path: str | Path | IO[bytes], suffix: str | None = 
         (e.g., permissions or disk space).
     :raises polars.exceptions.PolarsError: For Polars-specific errors.
     """
+    import polars as pl
+
     if not suffix:
         if isinstance(path, (str, Path)):
             suffix = Path(path).suffix

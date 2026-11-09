@@ -12,7 +12,7 @@ STORE = """
 import streamlit as st
 
 from snakelit.types import FileStore, Stat
-from snakelit.file_view import preview_for
+from snakelit.preview import preview_for
 
 
 class Store(FileStore):
@@ -47,7 +47,7 @@ class Store(FileStore):
 SCRIPT = STORE + """
 import streamlit as st
 
-from snakelit.file_view import FileExplorer
+from snakelit.file_explorer import FileExplorer
 
 if "state" not in st.session_state:
     st.session_state["state"] = FileExplorer(
@@ -124,7 +124,7 @@ def test_file_preview_shows_content():
 
 
 BINARY_SCRIPT = STORE + """
-from snakelit.file_view import FileExplorer
+from snakelit.file_explorer import FileExplorer
 
 if "state" not in st.session_state:
     st.session_state["state"] = FileExplorer(
@@ -144,7 +144,7 @@ def test_binary_preview_does_not_decode():
 
 
 TABLE_SCRIPT = STORE + """
-from snakelit.file_view import FileExplorer
+from snakelit.file_explorer import FileExplorer
 
 if "state" not in st.session_state:
     st.session_state["state"] = FileExplorer(
@@ -188,7 +188,7 @@ def test_tree_is_derived_from_paths():
 
 EDIT_SCRIPT = """
 import streamlit as st
-from snakelit.file_view import text_edit
+from snakelit.edit import text_edit
 
 value = text_edit("old", key="v")
 st.session_state["value"] = value

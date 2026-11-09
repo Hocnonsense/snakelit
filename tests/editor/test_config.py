@@ -9,7 +9,7 @@ from streamlit.testing.v1 import AppTest  # noqa: E402
 
 SCRIPT = """
 import streamlit as st
-from snakelit.editors import schema_dict
+from snakelit.editor.config import schema_config
 from snakelit.utils.yaml import dump, load
 
 CONFIG = {
@@ -39,7 +39,7 @@ SCHEMA = {
 }
 
 errors = []
-updated = schema_dict(dump(CONFIG).encode(), errors, SCHEMA, key="cfg")
+updated = schema_config(dump(CONFIG).encode(), errors, SCHEMA, key="cfg")
 st.session_state["updated"] = updated
 st.session_state["errors"] = errors
 st.session_state["edited"] = (
@@ -177,13 +177,13 @@ def test_text_mode_returns_no_text_on_invalid_yaml():
 
 RAW_SCRIPT = """
 import streamlit as st
-from snakelit.editors import schema_dict
+from snakelit.editor.config import schema_config
 from snakelit.utils.yaml import dump, load
 
 CONFIG = {"a": 1}
 
 errors = []
-updated = schema_dict(dump(CONFIG).encode(), errors, None, key="raw")
+updated = schema_config(dump(CONFIG).encode(), errors, None, key="raw")
 st.session_state["updated"] = updated
 st.session_state["errors"] = errors
 st.session_state["edited"] = (
@@ -212,10 +212,10 @@ def test_invalid_raw_yaml_returns_no_text():
 
 BROKEN_SCRIPT = """
 import streamlit as st
-from snakelit.editors import schema_dict
+from snakelit.editor.config import schema_config
 
 errors = []
-updated = schema_dict(b"a: [\\n", errors, None, key="broken")
+updated = schema_config(b"a: [\\n", errors, None, key="broken")
 st.session_state["updated"] = updated
 st.session_state["errors"] = errors
 """
@@ -237,12 +237,12 @@ def test_broken_text_opens_in_the_text_editor_and_can_be_repaired():
 
 FILE_SCRIPT = """
 import streamlit as st
-from snakelit.editors import schema_dict
+from snakelit.editor.config import schema_config
 
 if "clicked" not in st.session_state:
     st.session_state["clicked"] = []
 errors = []
-schema_dict(
+schema_config(
     b"samples: config/samples.tsv\\nmode: fast\\n",
     errors,
     {

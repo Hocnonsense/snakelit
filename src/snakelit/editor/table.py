@@ -14,10 +14,10 @@ from typing import Any, Callable, Mapping
 import polars as pl
 import streamlit as st
 
-from .schema import coerce_frame, table_errors
+from .table_schema import coerce_frame, table_errors
+from .text import schema_text_editor
 from ..utils.table import read, dump
 from ..utils.st_layouts import st_container_maxheight
-from ..editors import _editor_with_schema
 
 Control = Callable[[str, pl.DataFrame], tuple[pl.DataFrame, Any] | None]
 """A control returns ``(frame, payload)`` when it fired, else ``None``."""
@@ -72,7 +72,7 @@ def schema_table(
     except UnicodeDecodeError:
         st.error(f"Cannot edit {format.upper()} data as text.")
         return None
-    updated = _editor_with_schema(text, schema, key, height=height)
+    updated = schema_text_editor(text, schema, key, height=height)
     before = len(errors)
     parsed = read(updated.encode("utf-8"), suffix=format, schema=schema)
     if parsed is None:

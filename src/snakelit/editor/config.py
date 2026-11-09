@@ -1,10 +1,11 @@
-"""Visual editors driven by a JSON schema.
+"""Config editors driven by a JSON schema.
 
-``schema_dict`` renders a mapping as widgets and rebuilds it from the widget
-values on every rerun, so it never mutates the caller's object.  The schema is
-optional and read-only: with one, widgets and validation follow it; without
-one, the mapping is edited as raw YAML.  Hosts discover or let the user choose
-the schema; nothing in here edits or writes it.
+``schema_config`` renders a config document as widgets and rebuilds it from the
+widget values on every rerun, so it never mutates the caller's object.  The
+schema is optional and read-only: with one, widgets and validation follow it;
+without one, the config is edited as raw YAML.  Only mappings get the form;
+other YAML documents (lists, scalars) fall back to the text editor.  Hosts
+discover or let the user choose the schema; nothing in here edits or writes it.
 """
 
 from __future__ import annotations
@@ -14,20 +15,16 @@ from typing import Any, Callable, Mapping
 
 import streamlit as st
 
-from .utils.st_layouts import st_container_maxheight
-from .utils.schema import (
-    infer_type,
-    is_schema,
-    property_schema,
-    validate,
-)
-from .utils.yaml import SCIENTIFIC_FLOAT, dump as dump_yaml, load
+from ..utils.st_layouts import st_container_maxheight
+from ..utils.schema import infer_type, is_schema, property_schema, validate
+from ..utils.yaml import SCIENTIFIC_FLOAT, dump as dump_yaml, load
+from .text import schema_text_editor
 
 
 def _dump(data, format: str):
     if format == "yaml":
         return dump_yaml(data)
-    from .utils.json import dump as dump_json
+    from ..utils.json import dump as dump_json
 
     return dump_json(data)
 
@@ -38,13 +35,13 @@ def _looks_like_path(value: str):
     return "/" in value or bool(re.search(r"\.[A-Za-z][A-Za-z0-9]*$", value))
 
 
-def schema_dict(
+def schema_config(
     data: bytes,
     errors: list[str],
     schema: Mapping[str, Any] | None = None,
     header="Configuration Editor",
     *,
-    key: str = "dict",
+    key: str = "config",
     edit_file: Callable[[str], None] | None = None,
     format: str = "yaml",
 ):
@@ -90,7 +87,7 @@ def schema_dict(
 
     # Unparseable input is still editable: the text area is the source of
     # truth and reports its own parse/validation errors.
-    updated = _editor_with_schema(text, schema, key, height=height)
+    updated = schema_text_editor(text, schema, key, height=height)
     probe.clear()
     parsed = load(updated, probe)
     if not probe:
@@ -100,26 +97,11 @@ def schema_dict(
     errors.extend(probe)
 
 
-def _editor_with_schema(
-    text: str,
-    schema: Mapping[str, Any] | None,
-    key: str,
-    *,
-    height=420,
-):
-    """Render the raw text editor, with the schema beside it when given."""
-    editor = st
-    if is_schema(schema):
-        editor, viewer = st.columns([2, 1])
-        viewer.code(dump_yaml(schema), "yaml", height=height)
-    return editor.text_area("Text", value=text, key=f"{key}-editor", height=height)
-
-
 def create_form(
     config: dict,
     schema: Mapping[str, Any] | None,
     path: str = "",
-    key: str = "dict",
+    key: str = "config",
     edit_file: Callable[[str], None] | None = None,
 ):
     """Render widgets for ``config`` in place, in configuration order.
