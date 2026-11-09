@@ -89,14 +89,23 @@ def test_schema_errors_are_reported():
     assert any("required" in message for message in at.session_state["errors"])
 
 
-def test_read_and_dump_accept_a_suffix_without_dot():
-    from snakelit.utils.table import dump, read
+def test_load_and_dump_accept_a_suffix_without_dot():
+    from snakelit.utils.table import dump, load
 
-    frame = read(b"a,b\n1,2\n", suffix="csv")
+    frame = load(b"a,b\n1,2\n", suffix="csv")
 
     assert frame is not None
     assert frame.shape == (1, 2)
     assert dump(frame, "csv") == b"a,b\n1,2\n"
+
+
+def test_load_reports_an_unsupported_suffix():
+    from snakelit.utils.table import load
+
+    errors: list[str] = []
+
+    assert load(b"a,b\n1,2\n", errors=errors) is None
+    assert errors == ["Unsupported table format: (none)"]
 
 
 def test_schema_table_repairs_broken_tables_in_the_text_editor():

@@ -16,7 +16,7 @@ import streamlit as st
 
 from .table_schema import coerce_frame, table_errors
 from .text import schema_text_editor
-from ..utils.table import read, dump
+from ..utils.table import dump, load
 from ..utils.st_layouts import st_container_maxheight
 
 Control = Callable[[str, pl.DataFrame], tuple[pl.DataFrame, Any] | None]
@@ -43,7 +43,9 @@ def schema_table(
     validates every row; the schema is never edited.
     """
     height = 420
-    table = read(data, suffix=format, schema=schema)
+    # A file that cannot be read is not an error yet: the text editor takes
+    # over below, so this probe keeps its failures to itself.
+    table = load(data, suffix=format, schema=schema, errors=[])
     textable = format in ("csv", "tsv")
     if table is not None:
         if (
@@ -74,9 +76,8 @@ def schema_table(
         return None
     updated = schema_text_editor(text, schema, key, height=height)
     before = len(errors)
-    parsed = read(updated.encode("utf-8"), suffix=format, schema=schema)
+    parsed = load(updated.encode("utf-8"), suffix=format, schema=schema, errors=errors)
     if parsed is None:
-        errors.append(f"Could not read the table as {format.upper()}.")
         return None
     if schema:
         parsed, _ = coerce_frame(parsed, schema, errors)
