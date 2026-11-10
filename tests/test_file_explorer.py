@@ -5,7 +5,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from snakelit.file_explorer import _valid_path  # noqa: E402
 from snakelit.types import FileStore  # noqa: E402
 from streamlit.testing.v1 import AppTest  # noqa: E402
 

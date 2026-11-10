@@ -81,12 +81,16 @@ def toggle(state: str):
     st.session_state[state] = not st.session_state[state]
 
 
-def toggle_button(label: str, key: str, icon: str | None = None):
+def toggle_button(label: str, key: str, **kwargs):
     """Create a toggle button in Streamlit.
 
     :param label: The label for the button.
     :param key: A unique key to store the toggle state in Streamlit's session state.
-    :param icon: An optional icon to display alongside the button.
+        unique_key = f"{key}-{label.lower()}"
+        state = f"{key}-state"
+
+    on_click and args are overridden.
+
     :return: The current toggle state (True or False).
     """
 
@@ -94,12 +98,12 @@ def toggle_button(label: str, key: str, icon: str | None = None):
     state = f"{key}-state"
     if state not in st.session_state:
         st.session_state[state] = False
+    kwargs["on_click"] = toggle
+    kwargs["args"] = (state,)
     st.button(
         label,
         key=unique_key,
-        on_click=toggle,
-        args=(state,),
-        icon=icon,
+        **kwargs,
     )
     return st.session_state[state]
 

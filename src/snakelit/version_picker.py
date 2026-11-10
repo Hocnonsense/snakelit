@@ -175,7 +175,8 @@ def version_picker(init_ref: str | None, load: LoadRefs, *, key: str = "snakelit
         if state.error:
             st.error(f"Could not load {kind}s: {state.error}")
             return state.current
-        page_items, has_more = cache.select()
+        with st.spinner("Loading..."):
+            page_items, has_more = cache.select()
         choices = {item.value_subject: item for item in page_items}
         radio_key = f"{key}-{kind}-radio-{cache.page}"
         st.session_state[radio_key] = None
