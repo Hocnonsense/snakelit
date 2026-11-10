@@ -7,6 +7,10 @@ from streamlit.testing.v1 import AppTest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
+import polars as pl  # noqa: E402
+
+from snakelit.editor.table import _drop_empty_rows  # noqa: E402
+
 SCRIPT = """
 import polars as pl
 import streamlit as st
@@ -236,3 +240,22 @@ def test_form_table_coerces_before_and_keeps_the_copy_typed():
     at.run()
 
     assert at.session_state["edited"].schema["count"] == pl.Int64
+
+
+def test_drop_empty_rows_drops_only_fully_blank_rows():
+    frame = pl.DataFrame(
+        {
+            "sample": ["a", "", None],
+            "count": [1, None, None],
+            "tags": [["x"], None, None],
+        }
+    )
+
+    kept = _drop_empty_rows(frame)
+
+    assert kept.to_dict(as_series=False) == {
+        "sample": ["a"],
+        "count": [1],
+        "tags": [["x"]],
+    }
+    assert kept.schema == frame.schema

@@ -93,6 +93,12 @@ def coerce_frame(
             changed = True
         if dtype is None or current == dtype:
             continue
+        if current == pl.Null:
+            # An empty/all-null column has no values to infer from; give it
+            # the declared dtype instead of leaving it as Null.
+            frame = frame.with_columns(pl.col(column).cast(dtype))
+            changed = True
+            continue
         if dtype == _ARRAY_DTYPE:
             try:
                 frame = frame.with_columns(

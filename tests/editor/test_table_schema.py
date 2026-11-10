@@ -59,6 +59,19 @@ def test_coerce_frame_casts_columns():
     assert coerced.schema["count"] == pl.Int64
 
 
+def test_coerce_frame_gives_empty_columns_the_declared_dtype():
+    frame = pl.DataFrame({"sample": [None], "count": [None], "tags": [None]})
+
+    coerced, changed = coerce_frame(frame, SCHEMA)
+
+    assert changed
+    assert coerced.schema == {
+        "sample": pl.String,
+        "count": pl.Int64,
+        "tags": pl.List(pl.String),
+    }
+
+
 def test_coerce_frame_decodes_json_arrays():
     frame = pl.DataFrame({"sample": ["a"], "tags": ['["x", "y"]']})
 

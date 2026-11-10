@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, Mapping
 
+import sys
 import polars as pl
 import streamlit as st
 
@@ -168,22 +169,80 @@ def editable_table(
         key=f"{key}-editor",
         column_config=column_config,
     )
-    result = pl.from_pandas(edited)
-    result = _drop_empty_rows(result) if drop_empty else result
+    result = _from_pandas(edited)
+    if drop_empty:
+        result = _drop_empty_rows(result)
     st.session_state[data_key] = result
     return result
 
 
+def _from_pandas(frame):
+    """Rebuild a Polars frame from the data editor's pandas frame.
+
+    Polars' own pandas bridge creates string columns that later panic with
+    ``capacity overflow`` when converted back to pandas under Pyodide
+    (polars 1.33).  Going through plain Python values avoids that path.
+    """
+    if sys.platform != "emscripten":
+        return pl.from_pandas(frame)
+
+    import pandas as pd
+
+    def cell(value):
+        if value is None or value is pd.NA or value is pd.NaT:
+            return None
+        if isinstance(value, float) and value != value:
+            return None
+        return value
+
+    data = {
+        name: [cell(value) for value in values]
+        for name, values in frame.to_dict(orient="list").items()
+    }
+    overrides: dict[str, type[pl.DataType]] = {}
+    for name, dtype in frame.dtypes.items():
+        if pd.api.types.is_bool_dtype(dtype):
+            overrides[name] = pl.Boolean
+        elif pd.api.types.is_unsigned_integer_dtype(dtype):
+            overrides[name] = pl.UInt64
+        elif pd.api.types.is_integer_dtype(dtype):
+            overrides[name] = pl.Int64
+        elif pd.api.types.is_float_dtype(dtype):
+            overrides[name] = pl.Float64
+        elif not pd.api.types.is_object_dtype(dtype) and pd.api.types.is_string_dtype(
+            dtype
+        ):
+            overrides[name] = pl.Utf8
+        elif pd.api.types.is_object_dtype(dtype) and not any(
+            value is not None for value in data[name]
+        ):
+            overrides[name] = pl.Utf8
+    return pl.DataFrame(data, schema_overrides=overrides)
+
+
 def _drop_empty_rows(frame: pl.DataFrame):
-    """Drop rows where every cell is null or blank."""
+    """Drop rows where every cell is null or blank.
+
+    The mask is applied while rebuilding the frame from Python values instead
+    of ``frame.filter``: Polars 1.33 under Pyodide corrupts string columns when
+    a filtered frame is converted back to pandas (``capacity overflow``).
+    """
     if frame.height == 0 or not frame.columns:
         return frame
-    blank = [
-        pl.col(column).is_null()
-        | (pl.col(column).cast(pl.Utf8).str.strip_chars() == "")
-        for column in frame.columns
+    keep = [
+        any(
+            value is not None and (not isinstance(value, str) or value.strip() != "")
+            for value in row
+        )
+        for row in frame.iter_rows()
     ]
-    return frame.filter(~pl.all_horizontal(blank))
+    if all(keep):
+        return frame
+    data = {
+        name: [value for value, wanted in zip(frame[name].to_list(), keep) if wanted]
+        for name in frame.columns
+    }
+    return pl.DataFrame(data, schema=frame.schema)
 
 
 def _add_column(key: str, frame: pl.DataFrame):
