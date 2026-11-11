@@ -116,3 +116,42 @@ def coerce_frame(
             continue
         changed = True
     return frame, changed
+
+
+def nullify(example: Mapping):
+    """Canonicalize a columnar example: empty strings become ``None`` (absent).
+
+    A table cell cannot distinguish ``""`` from missing, so the model keeps a
+    single empty representation (``None``); this keeps a sidecar free of a mix
+    of ``null`` and ``''``.
+    """
+    return {
+        column: [None if value == "" else value for value in values]
+        for column, values in example.items()
+    }
+
+
+def _json_type(dtype: pl.DataType):
+    if dtype.is_integer():
+        return "integer"
+    if dtype.is_float():
+        return "number"
+    if dtype == pl.Boolean:
+        return "boolean"
+    return "string"
+
+
+def infer_table_schema(table: pl.DataFrame):
+    """Infer a row schema (an object of typed properties) from a table."""
+    return {
+        "type": "object",
+        "properties": {
+            column: _column_schema(table.schema[column]) for column in table.columns
+        },
+    }
+
+
+def _column_schema(dtype: pl.DataType):
+    if dtype.is_nested():
+        return {"type": "array", "items": {"type": "string"}}
+    return {"type": _json_type(dtype)}

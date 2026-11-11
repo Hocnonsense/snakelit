@@ -111,13 +111,18 @@ def form_table(
         frame, _ = coerce_frame(frame, schema, errors)
 
     current: pl.DataFrame | None = st.session_state.get(data_key)
-    if current is None or not current.equals(frame):
+    reset = current is None or not current.equals(frame)
+    if reset:
         # The host's frame is the truth: refresh the copy whenever it changed,
         # so an unmounted editor or a document changed elsewhere cannot leave
         # stale rows behind.
         st.session_state[data_key] = frame
-    column_controls(key)
-    edited = editable_table(key, column_config=column_config)
+    change = column_controls(key)
+    edited = editable_table(
+        key,
+        column_config=column_config,
+        reset=reset or bool(change),
+    )
 
     if schema:
         # strip and format the edited frame to save correctly.
@@ -154,19 +159,29 @@ def editable_table(
     *,
     column_config: Mapping | None = None,
     drop_empty: bool = True,
+    reset: bool = False,
 ) -> pl.DataFrame:
     """Render ``st.data_editor`` for ``st.session_state[f"{key}-data"]``.
 
-    The editor is seeded from that copy every run; its widget state carries the
-    edits and the result is written back to the copy.
+    The current data lives in ``{key}-data``; the edited result is written back
+    there and returned.  Edits accumulate against a separate stable base
+    (``{key}-base``) rather than re-feeding ``{key}-data`` as the editor input,
+    which would make edits lag by one run.  Pass ``reset=True`` when the table
+    is replaced programmatically (column change, upload, fill, clear) so the
+    base is re-seeded and the widget rebuilt.
     """
     data_key = f"{key}-data"
+    base_key = f"{key}-base"
+    revision_key = f"{key}-revision"
+    if reset or base_key not in st.session_state:
+        st.session_state[base_key] = st.session_state[data_key]
+        st.session_state[revision_key] = st.session_state.get(revision_key, 0) + 1
     edited = st.data_editor(
-        st.session_state[data_key].to_pandas(),
+        st.session_state[base_key].to_pandas(),
         num_rows="dynamic",
         width="stretch",
         hide_index=True,
-        key=f"{key}-editor",
+        key=f"{key}-{st.session_state[revision_key]}",
         column_config=column_config,
     )
     result = _from_pandas(edited)
