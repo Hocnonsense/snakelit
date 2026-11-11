@@ -54,9 +54,16 @@ def _valid_path(target: str, tree: Callable[[], dict]):
 class FileExplorer:
     """File tree and preview state for one :class:`FileStore`."""
 
-    def __init__(self, key: str, store: FileStore):
+    def __init__(
+        self,
+        key: str,
+        store: FileStore,
+        *,
+        on_zip: Callable[[str, bytes], None] | None = None,
+    ):
         self.key = key
         self.store = store
+        self.on_zip = on_zip
         self.expand_dirs: set[str] = set()
         self.preview: tuple[str, tuple] | None = None
 
@@ -165,6 +172,19 @@ class FileExplorer:
             if not files:
                 st.warning("Choose at least one file.")
                 return
+            if (
+                len(files) == 1
+                and files[0].name.lower().endswith(".zip")
+                and self.on_zip is not None
+            ):
+                if st.button(
+                    "Unzip and trigger merge",
+                    key=f"{self.key}-upload-zip-merge",
+                    width="stretch",
+                    help="Compare the archive with these files instead of adding it.",
+                ):
+                    self.on_zip(files[0].name, files[0].getvalue())
+                    st.rerun()
             folder, sub_tree = _valid_path(target, self.store.tree)
             if folder is None:
                 st.error(f"Invalid target path: {target!r}")

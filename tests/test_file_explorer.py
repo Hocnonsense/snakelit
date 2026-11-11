@@ -1,6 +1,8 @@
 """File tree rendering, folder toggles, preview and editing."""
 
+import io
 import sys
+import zipfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -215,6 +217,9 @@ if "state" not in st.session_state:
     st.session_state["state"] = FileExplorer(
         key="files",
         store=Store({"config/config.yaml": b"x: 1\\n"}),
+        on_zip=lambda name, data: st.session_state.__setitem__(
+            "zip", (name, data)
+        ),
     )
 st.session_state["state"].render()
 """
@@ -296,6 +301,30 @@ def test_upload_refuses_several_files_at_a_file_path():
     assert [item.value for item in at.error] == [
         "'config/config.yaml' is a file; choose a folder path."
     ]
+
+
+def _zip(files):
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for path, content in files.items():
+            archive.writestr(path, content)
+    return buffer.getvalue()
+
+
+def test_upload_zip_can_start_a_merge_instead_of_writing():
+    at = _app(UPLOAD_SCRIPT)
+    data = _zip({"Snakefile": b"rule all:\n"})
+    at.file_uploader(key="files-upload-files").upload("workflow.zip", data)
+    at.run()
+
+    merge = _button(at, "files-upload-zip-merge")
+    assert merge.label == "Unzip and trigger merge"
+    merge.click()
+    at.run()
+
+    assert not at.exception, [str(error.value) for error in at.exception]
+    assert "workflow.zip" not in at.session_state["state"].store.files
+    assert at.session_state["zip"] == ("workflow.zip", data)
 
 
 def _open_config_in_edit(at):
