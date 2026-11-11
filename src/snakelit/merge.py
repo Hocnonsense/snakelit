@@ -7,7 +7,7 @@ the :class:`FileStore` protocol, and the caller supplies the baseline bytes
 
 from __future__ import annotations
 
-from typing import Callable, Mapping
+from typing import Mapping
 
 import streamlit as st
 
@@ -53,27 +53,25 @@ def render_merge(
     header: str,
     files: dict[str, bytes | None],
     *,
-    base: Mapping[str, bytes] | None,
-    on_cancel: Callable[[], None],
+    base=None,
     key: str = "merge",
 ):
     """Render the per-file incoming/local comparison.
 
     ``header`` is the already-formatted title (for example
     ``"Merge me/wf@main (abc1234)"``).  ``files`` is the dict returned by
-    :func:`diff_files`; resolving a row pops its key.  An empty dict means the
-    merge is complete.  ``base`` maps paths to the bytes both sides started
-    from, which is only used for the status text.  ``on_cancel`` clears the
-    caller's merge state before the rerun.
+    :func:`diff_files`; resolving a row pops its key.  ``base`` maps paths to
+    the bytes both sides started from, which is only used for the status text.
+
+    Returns None when the user cancels; the caller clears its state and reruns.
     """
     if not files:
-        return
+        return files
 
     title, cancel = st.columns([4, 1], vertical_alignment="bottom")
     title.subheader(header)
     if cancel.button("Cancel comparison", key=f"{key}-discard", width="stretch"):
-        on_cancel()
-        st.rerun()
+        return
     for path in sorted(files):
         empty = st.empty()
         if render_file(store, path, files[path], empty.container(), base=base, key=key):
@@ -81,6 +79,7 @@ def render_merge(
             empty.empty()
             if not files:
                 st.rerun()
+    return files
 
 
 def render_file(
