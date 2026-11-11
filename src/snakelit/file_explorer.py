@@ -138,6 +138,12 @@ class FileExplorer:
                 self._render(self.store.tree())
         self.preview_panel()
 
+    def delete(self, path: str):
+        """Remove ``path`` and close its preview."""
+        self.store.rm(path)
+        if self.preview and self.preview[0] == path:
+            self.preview = None
+
     def upload(self):
         """Render the upload form; uploaded files are written to the store."""
         with st.popover("Upload", icon=":material/upload:"):
@@ -224,7 +230,7 @@ class FileExplorer:
             return
         exists = self.store.stat(path) is not None
 
-        head, delete, edit = st.columns([3, 1, 1])
+        head, action, edit = st.columns([3, 1, 1])
         if mode == "Edit":
             head.markdown(f"Edit `{path}`" if exists else f"New file `{path}`")
             if exists:
@@ -233,24 +239,42 @@ class FileExplorer:
                 ):
                     self.preview = (path, ())
                     st.rerun()
-                if delete.button("Delete", key=f"{self.key}-delete", width="stretch"):
-                    self.store.rm(path)
-                    self.preview = None
-                    st.rerun()
-            elif delete.button("Cancel", key=f"{self.key}-cancel", width="stretch"):
+                if action.button("Delete", key=f"{self.key}-delete", width="stretch"):
+
+                    @st.dialog("Delete file", on_dismiss=lambda: self.delete(path))
+                    def confirm():
+                        st.caption(
+                            f"Dismiss this popup to delete `{path}`. "
+                            "Cancel keeps the file."
+                        )
+                        if st.button(
+                            "Cancel",
+                            key=f"{self.key}-cancel-delete",
+                            width="stretch",
+                        ):
+                            st.rerun()
+
+                    confirm()
+            elif action.button("Cancel", key=f"{self.key}-cancel", width="stretch"):
                 self.preview = None
                 st.rerun()
         else:
             head.markdown(f"Preview `{path}`")
+            if exists:
+                action.download_button(
+                    "Download",
+                    data=self.store.read(path) or b"",
+                    file_name=path.rsplit("/", 1)[-1],
+                    mime="application/octet-stream",
+                    key=f"{self.key}-download-{path}",
+                    width="stretch",
+                )
             if edit.button(
                 "Edit" if exists else "Create",
                 key=f"{self.key}-edit-toggle",
                 width="stretch",
             ):
                 self.preview = (path, ("edit",))
-                st.rerun()
-            if delete.button("hide", key=f"{self.key}-hide", width="stretch"):
-                self.preview = None
                 st.rerun()
 
         with st_container_maxheight(f"{self.key}-preview"):

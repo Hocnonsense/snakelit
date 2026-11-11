@@ -296,3 +296,35 @@ def test_upload_refuses_several_files_at_a_file_path():
     assert [item.value for item in at.error] == [
         "'config/config.yaml' is a file; choose a folder path."
     ]
+
+
+def _open_config_in_edit(at):
+    _button(at, "files-dir-config").click()
+    at.run()
+    _button(at, "files-file-config/config.yaml").click()
+    at.run()
+    _button(at, "files-edit-toggle").click()
+    at.run()
+    return at.session_state["state"].store
+
+
+def test_delete_opens_a_confirmation_dialog():
+    at = _app()
+    store = _open_config_in_edit(at)
+
+    _button(at, "files-delete").click()
+    at.run()
+
+    assert not at.exception
+    assert "config/config.yaml" in store.files
+    assert _button(at, "files-cancel-delete").label == "Cancel"
+    assert len(at.get("dialog")) == 1
+
+    # cannot close the dialog in the test, use the api directly
+    explorer = at.session_state["state"]
+    explorer.delete("config/config.yaml")
+    at.run()
+
+    assert not at.exception
+    assert "config/config.yaml" not in store.files
+    assert explorer.preview is None
