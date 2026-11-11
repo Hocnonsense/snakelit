@@ -59,7 +59,7 @@ class FileExplorer:
         key: str,
         store: FileStore,
         *,
-        on_zip: Callable[[str, bytes], None] | None = None,
+        on_zip: Callable[[str, bytes], bool] | None = None,
     ):
         self.key = key
         self.store = store
@@ -183,8 +183,9 @@ class FileExplorer:
                     width="stretch",
                     help="Compare the archive with these files instead of adding it.",
                 ):
-                    self.on_zip(files[0].name, files[0].getvalue())
-                    st.rerun()
+                    # False keeps the popover (and its error) on screen.
+                    if self.on_zip(files[0].name, files[0].getvalue()):
+                        st.rerun()
             folder, sub_tree = _valid_path(target, self.store.tree)
             if folder is None:
                 st.error(f"Invalid target path: {target!r}")
