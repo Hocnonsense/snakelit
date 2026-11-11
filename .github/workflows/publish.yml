@@ -1,0 +1,53 @@
+name: Publish
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          # release-type: python updates the version in pyproject.toml,
+          # generates CHANGELOG.md, creates the release PR and the tag.
+          # Use a dedicated PAT instead of GITHUB_TOKEN if the release PR
+          # should itself trigger CI on `main`.
+          release-type: python
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  publish:
+    needs: release-please
+    if: ${{ needs.release-please.outputs.release_created }}
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/snakelit/
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pixi
+        uses: prefix-dev/setup-pixi@v0.10.0
+        with:
+          environments: publish
+
+      - name: Build and check package
+        run: pixi run --environment publish check
+
+      # Trusted Publishing (OIDC): no username/password; the PyPI side must
+      # have this repo + workflow (publish.yml) + environment "pypi"
+      # registered as a trusted publisher.
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

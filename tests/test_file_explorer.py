@@ -21,7 +21,7 @@ class Store(FileStore):
     def __init__(self, files):
         self.files = files
 
-    def paths(self):
+    def paths(self, dir=""):
         return list(self.files)
 
     def stat(self, path):
@@ -46,7 +46,9 @@ class Store(FileStore):
         self.files.pop(str(path), None)
 """
 
-SCRIPT = STORE + """
+SCRIPT = (
+    STORE
+    + """
 import streamlit as st
 
 from snakelit.file_explorer import FileExplorer
@@ -64,6 +66,7 @@ if "state" not in st.session_state:
     )
 st.session_state["state"].render()
 """
+)
 
 
 def _button(at, key):
@@ -125,7 +128,9 @@ def test_file_preview_shows_content():
     assert "x: 1" in at.code[0].value
 
 
-BINARY_SCRIPT = STORE + """
+BINARY_SCRIPT = (
+    STORE
+    + """
 from snakelit.file_explorer import FileExplorer
 
 if "state" not in st.session_state:
@@ -134,6 +139,7 @@ if "state" not in st.session_state:
     )
 st.session_state["state"].render()
 """
+)
 
 
 def test_binary_preview_does_not_decode():
@@ -145,7 +151,9 @@ def test_binary_preview_does_not_decode():
     assert any("Binary file" in item.value for item in at.caption)
 
 
-TABLE_SCRIPT = STORE + """
+TABLE_SCRIPT = (
+    STORE
+    + """
 from snakelit.file_explorer import FileExplorer
 
 if "state" not in st.session_state:
@@ -154,6 +162,7 @@ if "state" not in st.session_state:
     )
 st.session_state["state"].render()
 """
+)
 
 
 def test_table_preview_reads_csv():
@@ -167,7 +176,7 @@ def test_table_preview_reads_csv():
 
 def test_tree_is_derived_from_paths():
     class Store(FileStore):
-        def paths(self):
+        def paths(self, dir=""):
             return ["a/b.txt", "c.txt"]
 
         def stat(self, path):
@@ -210,7 +219,9 @@ def test_text_edit_returns_the_value():
     assert at.session_state["value"] == "new"
 
 
-UPLOAD_SCRIPT = STORE + """
+UPLOAD_SCRIPT = (
+    STORE
+    + """
 from snakelit.file_explorer import FileExplorer
 
 if "state" not in st.session_state:
@@ -223,6 +234,7 @@ if "state" not in st.session_state:
     )
 st.session_state["state"].render()
 """
+)
 
 
 def test_upload_places_files_according_to_the_target():

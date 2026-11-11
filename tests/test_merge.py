@@ -1,8 +1,6 @@
 """Incoming-file comparison and zip archives."""
 
-import io
 import sys
-import zipfile
 from pathlib import Path
 
 import pytest
@@ -18,7 +16,7 @@ class Store(FileStore):
     def __init__(self, files=None):
         self.files = dict(files or {})
 
-    def paths(self):
+    def paths(self, dir=""):
         return list(self.files)
 
     def stat(self, path):

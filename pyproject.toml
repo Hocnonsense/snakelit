@@ -2,12 +2,9 @@
 name = "snakelit"
 version = "0.0.1"
 description = "Reusable Streamlit widgets for Snakemake workflows"
+readme = "README.md"
 requires-python = ">=3.11"
-dependencies = [
-    "streamlit>=1.55,<2",
-    "PyYAML>=6,<7",
-    "jsonschema>=4,<5",
-]
+dependencies = ["streamlit>=1.55,<2", "PyYAML>=6,<7", "jsonschema>=4,<5"]
 
 [project.optional-dependencies]
 tables = ["polars>=1.30,<3"]
@@ -29,6 +26,24 @@ snakelit = { path = ".", editable = true }
 [tool.pixi.feature.test.pypi-dependencies]
 pytest = "*"
 polars = ">=1.30,<3"
+ruff = "*"
+pyright = "*"
 
 [tool.pixi.environments]
 test = ["test"]
+publish = ["publish"]
+
+[tool.pixi.feature.publish.dependencies]
+python-build = ">=1.2"
+twine = ">=6"
+
+[tool.pixi.feature.publish.tasks]
+build = "python -m build"
+check = { cmd = "python -m twine check dist/*", depends-on = ["build"] }
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+# Keep the conventional Ruff default set; newer releases enable more rules.
+select = ["E4", "E7", "E9", "F"]

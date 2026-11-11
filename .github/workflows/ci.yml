@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pixi
+        uses: prefix-dev/setup-pixi@v0.10.0
+        with:
+          environments: test
+
+      - name: Check formatting
+        run: pixi run -e test ruff format --check src tests
+
+      - name: Lint
+        run: pixi run -e test ruff check src tests
+
+      - name: Typecheck
+        run: pixi run -e test pyright src tests
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Pixi
+        uses: prefix-dev/setup-pixi@v0.10.0
+        with:
+          environments: test
+      - name: Run tests
+        run: pixi run -e test pytest -q
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pixi
+        uses: prefix-dev/setup-pixi@v0.10.0
+        with:
+          environments: publish
+
+      - name: Build and check package
+        run: pixi run --environment publish check
