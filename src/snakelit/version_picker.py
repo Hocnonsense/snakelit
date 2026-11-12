@@ -7,8 +7,8 @@ The host passes:
   ``commit``.
 
 The version row follows SRPtn: three buttons (tag / branch / commit) showing the
-current value.  The open kind is rendered as a list of full-width buttons, one
-per row, with ``Prev`` / ``Next`` for pagination.  Resolving ``init_ref``
+current value.  Clicking one opens a modal dialog with the full-width list for
+that kind, with ``Prev`` / ``Next`` for pagination.  Resolving ``init_ref``
 consumes the matching iterable up to that ref.
 """
 
@@ -171,45 +171,58 @@ def version_picker(init_ref: str | None, load: LoadRefs, *, key: str = "snakelit
 
     if state.open:
         kind = state.kind
-        cache = state.items[kind]
-        if state.error:
-            st.error(f"Could not load {kind}s: {state.error}")
-            return state.current
-        with st.spinner("Loading..."):
-            page_items, has_more = cache.select()
-        choices = {item.value_subject: item for item in page_items}
-        radio_key = f"{key}-{kind}-radio-{cache.page}"
-        st.session_state[radio_key] = None
-        st.radio(
-            kind.capitalize(),
-            choices,
-            index=None,
-            key=radio_key,
-            label_visibility="collapsed",
-            on_change=_pick,
-            args=(state, choices, radio_key),
-        )
 
-        prev, item, next_ = st.columns(3, vertical_alignment="center")
-        prev.button(
-            "Prev",
-            key=f"{key}-prev",
-            disabled=cache.page == 0,
-            width="stretch",
-            on_click=state.prev_page,
+        @st.dialog(
+            f"Select a {kind}",
+            width="large",
+            on_dismiss=lambda: setattr(state, "open", False),
         )
-        item.button(
-            cache.page_str(),
-            key=f"{key}-page",
-            disabled=True,
-            width="stretch",
-        )
-        next_.button(
-            "Next",
-            key=f"{key}-next",
-            disabled=not has_more,
-            width="stretch",
-            on_click=state.next_page,
-        )
+        def selection():
+            # A selection inside the dialog reruns only the dialog fragment;
+            # this full rerun closes it.
+            if not state.open:
+                st.rerun()
+            cache = state.items[kind]
+            if state.error:
+                st.error(f"Could not load {kind}s: {state.error}")
+                return
+            with st.spinner("Loading..."):
+                page_items, has_more = cache.select()
+            choices = {item.value_subject: item for item in page_items}
+            radio_key = f"{key}-{kind}-radio-{cache.page}"
+            st.session_state[radio_key] = None
+            st.radio(
+                kind.capitalize(),
+                choices,
+                index=None,
+                key=radio_key,
+                label_visibility="collapsed",
+                on_change=_pick,
+                args=(state, choices, radio_key),
+            )
+
+            prev, item, next_ = st.columns(3, vertical_alignment="center")
+            prev.button(
+                "Prev",
+                key=f"{key}-prev",
+                disabled=cache.page == 0,
+                width="stretch",
+                on_click=state.prev_page,
+            )
+            item.button(
+                cache.page_str(),
+                key=f"{key}-page",
+                disabled=True,
+                width="stretch",
+            )
+            next_.button(
+                "Next",
+                key=f"{key}-next",
+                disabled=not has_more,
+                width="stretch",
+                on_click=state.next_page,
+            )
+
+        selection()
 
     return state.current
