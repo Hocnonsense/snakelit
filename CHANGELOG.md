@@ -6,7 +6,6 @@
 ### Bug Fixes
 
 * dialog to select ref ([5f61ca8](https://github.com/Hocnonsense/snakelit/commit/5f61ca8a3efc93a97ef81916ae520e9bdd5fe0b3))
-* dialog to select ref ([e50f830](https://github.com/Hocnonsense/snakelit/commit/e50f8308ed2ce874d7214d0bed581616d0ff544b))
 
 ## 0.1.0 (2026-11-11)
 
