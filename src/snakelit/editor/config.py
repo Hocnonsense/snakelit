@@ -77,7 +77,7 @@ def schema_config(
             # formatting must survive an untouched form.
             original = _dump(config, format)
             with st_container_maxheight(f"{key}-form-container", height=height):
-                create_form(config, schema, "", key, edit_file)
+                create_form(config, schema, "", key_prefix=key, edit_file=edit_file)
             before = len(errors)
             errors.extend(validate(config, schema))
             if len(errors) > before:
@@ -100,51 +100,69 @@ def schema_config(
 def create_form(
     config: dict,
     schema: Mapping[str, Any] | None,
-    path: str = "",
-    key: str = "config",
+    parent_key: str = "",
+    *,
+    key_prefix: str = "config",
     edit_file: Callable[[str], None] | None = None,
 ):
     """Render widgets for ``config`` in place, in configuration order.
 
-    Nested mappings recurse into a bordered container at their own position,
-    so the form follows the tree instead of collecting them into tabs.  A
-    schema entry is used when it exists; otherwise the widget is inferred from
-    the value.  No schema is constructed or modified.
+    Leaf values are rendered first; nested mappings are collected into
+    ``st.tabs`` at their own level, as in SRPtn.  A schema entry is used when
+    it exists; otherwise the widget is inferred from the value.
+    No schema is constructed or modified.
     """
-    required = set((schema or {}).get("required") or ())
+    required_fields = set((schema or {}).get("required") or ())
+    new_tabs: list[tuple[str, dict, Mapping[str, Any] | None]] = []
 
-    for name, value in config.items():
-        subschema = property_schema(schema, name)
+    for key, value in config.items():
+        input_dict = property_schema(schema, key)
         if isinstance(value, dict):
-            with st.container(border=True):
-                st.markdown(f"**{name}**")
-                if subschema is None or is_schema(subschema):
-                    create_form(value, subschema, _path(path, name), key, edit_file)
-                else:
-                    config[name] = _raw(value, name, f"{key}-{_path(path, name)}", None)
+            if input_dict is not None and not is_schema(input_dict):
+                config[key] = _raw(
+                    value,
+                    key,
+                    f"{key_prefix}-{update_key(parent_key, key)}",
+                    None,
+                )
+            else:
+                new_tabs.append((key, value, input_dict))
             continue
-        config[name] = _value(
+        config[key] = _value(
             value,
-            subschema or infer_type(value),
-            _path(path, name),
-            key,
-            label=name,
-            required=name in required,
+            input_dict or infer_type(value),
+            update_key(parent_key, key),
+            key_prefix,
+            label=key,
+            required=key in required_fields,
             edit_file=edit_file,
         )
+
+    if new_tabs:
+        tabs = st.tabs([key for key, _, _ in new_tabs])
+        for tab, (key, value, new_schema) in enumerate(new_tabs):
+            updated_parent_key = update_key(parent_key, key)
+            with tabs[tab]:
+                create_form(
+                    value,
+                    new_schema,
+                    updated_parent_key,
+                    key_prefix=key_prefix,
+                    edit_file=edit_file,
+                )
 
 
 def _value(
     value,
     schema: Mapping[str, Any],
-    path: str,
-    key: str,
+    parent_key: str,
+    key_prefix: str,
     *,
     label: str,
     required: bool,
     edit_file: Callable[[str], None] | None = None,
 ):
-    widget_key = f"{key}-{path}"
+    unique_element_id = f"{key_prefix}-{parent_key}"
     help_text = schema.get("description")
     caption = f"{label} *" if required else label
     types = _types(schema)
@@ -157,36 +175,38 @@ def _value(
             caption,
             options,
             index=options.index(value),
-            key=widget_key,
+            key=unique_element_id,
             help=help_text,
         )
 
     if isinstance(value, list):
-        return _array(value, schema, caption, widget_key, help_text)
+        return _array(value, schema, caption, unique_element_id, help_text)
 
     if isinstance(value, Mapping):
-        return _raw(value, caption, widget_key, help_text)
+        return _raw(value, caption, unique_element_id, help_text)
 
     if "boolean" in types or (not types and isinstance(value, bool)):
-        return st.checkbox(caption, value=bool(value), key=widget_key, help=help_text)
+        return st.checkbox(
+            caption, value=bool(value), key=unique_element_id, help=help_text
+        )
 
     if "integer" in types or "number" in types:
-        return _number(value, types, caption, widget_key, help_text)
+        return _number(value, types, caption, unique_element_id, help_text)
 
     if not types and isinstance(value, (int, float)):
-        return _number(value, ["number"], caption, widget_key, help_text)
+        return _number(value, ["number"], caption, unique_element_id, help_text)
 
     if "string" in types or not types or value is None:
         return _text(
             value,
             caption,
-            widget_key,
+            unique_element_id,
             help_text,
             nullable="null" in types,
             edit_file=edit_file,
         )
 
-    return _raw(value, caption, widget_key, help_text)
+    return _raw(value, caption, unique_element_id, help_text)
 
 
 def _text(
@@ -321,5 +341,5 @@ def _types(schema: Mapping[str, Any]) -> list[str]:
     return list(declared or ())
 
 
-def _path(parent: str, name: str):
-    return f"{parent}.{name}" if parent else name
+def update_key(parent_key: str, key: str):
+    return f"{parent_key}.{key}" if parent_key else key

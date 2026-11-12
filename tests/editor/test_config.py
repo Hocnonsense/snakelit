@@ -266,3 +266,10 @@ def test_path_values_get_a_file_button_that_reports_the_path():
     at.run()
 
     assert at.session_state["clicked"] == ["config/samples.tsv"]
+
+
+def test_nested_mappings_render_as_tabs():
+    at = _app()
+
+    assert not at.exception
+    assert "params" in [tab.label for tab in at.tabs]

@@ -38,7 +38,7 @@ Schemas are read-only and used to choose widgets, coerce values and report error
 
 #### Configuration
 
-`schema_config` renders a config document as a form and falls back to a raw YAML/JSON editor.
+`schema_config` renders a config document as a form and falls back to a raw YAML/JSON editor, nested mappings are collected into `st.tabs`.
 
 ```python
 from snakelit.editor.config import schema_config
