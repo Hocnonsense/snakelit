@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/Hocnonsense/snakelit/compare/v0.1.0...v0.1.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* dialog to select ref ([5f61ca8](https://github.com/Hocnonsense/snakelit/commit/5f61ca8a3efc93a97ef81916ae520e9bdd5fe0b3))
+
 ## 0.1.0 (2026-11-11)
 
 
