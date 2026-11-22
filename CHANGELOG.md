@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/Hocnonsense/snakelit/compare/v0.1.1...v0.1.2) (2026-11-12)
+
+
+### Bug Fixes
+
+* nested mappings are collected into `st.tabs` ([5e2fd9a](https://github.com/Hocnonsense/snakelit/commit/5e2fd9a6fd77fde50cd8d81ba92517f572ce9dee))
+
 ## [0.1.1](https://github.com/Hocnonsense/snakelit/compare/v0.1.0...v0.1.1) (2026-11-12)
 
 
