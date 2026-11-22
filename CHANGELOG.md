@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/Hocnonsense/snakelit/compare/v0.2.1...v0.2.2) (2026-11-22)
+
+
+### Bug Fixes
+
+* add suggess ([#12](https://github.com/Hocnonsense/snakelit/issues/12)) ([6b3a6ae](https://github.com/Hocnonsense/snakelit/commit/6b3a6ae1ee1efcdb7d963d9ed6d86e1d88e8b45b))
+
 ## [0.2.1](https://github.com/Hocnonsense/snakelit/compare/v0.2.0...v0.2.1) (2026-11-22)
 
 
