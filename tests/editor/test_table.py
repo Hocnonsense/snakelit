@@ -1,8 +1,10 @@
 """Widget-level tests for the editable table."""
 
 import sys
+import json
 from pathlib import Path
 
+import pytest
 from streamlit.testing.v1 import AppTest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
@@ -283,3 +285,42 @@ st.session_state.errors = errors
     assert not at.radio
     assert at.session_state.updated is None
     assert any("missing" in message for message in at.session_state.errors)
+
+
+@pytest.mark.parametrize("switch", ["Text Editor", "Preview"])
+def test_committed_cell_survives_form_remount(switch):
+    at = _app("""
+import streamlit as st
+from snakelit.editor.table import schema_table
+
+data = st.session_state.setdefault("file", b"sample,count\\na,1\\n")
+if st.radio("View", ["Edit", "Preview"], key="view") == "Edit":
+    updated = schema_table(data, [], key="sheet")
+    if updated is not None:
+        st.session_state["file"] = updated
+else:
+    st.code(data.decode())
+""")
+    original_key = at.dataframe[0].key
+    # AppTest exposes the input frame but has no cell-edit setter. Submit
+    # the same row delta that the browser sends when the cell is committed.
+    states = at._tree.get_widget_states()
+    widget = states.widgets.add(id=at.dataframe[0].proto.id)
+    widget.string_value = json.dumps({"edited_rows": {"0": {"sample": "changed"}}})
+    at._run(states)
+    expected = b"sample,count\nchanged,1\n"
+    assert at.session_state["file"] == expected
+
+    key = "sheet-editor-mode" if switch == "Text Editor" else "view"
+    at.radio(key=key).set_value(switch).run()
+    assert not at.exception
+    assert at.session_state["file"] == expected
+    if switch == "Text Editor":
+        assert at.text_area[0].value == expected.decode()
+    else:
+        assert at.code[0].value == expected.decode().strip()
+    at.radio(key=key).set_value("Form" if switch == "Text Editor" else "Edit").run()
+    assert not at.exception
+    assert at.session_state["file"] == expected
+    assert at.dataframe[0].value.iloc[0]["sample"] == "changed"
+    assert at.dataframe[0].key == original_key
