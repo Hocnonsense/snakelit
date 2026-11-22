@@ -241,9 +241,9 @@ def repository_picker(
     selected = st.selectbox("Select workflow repository", options, key=f"{key}-source")
     if selected == manual:
         example = "https://github.com/snakemake-workflows/rna-seq-kallisto-sleuth"
-        suggess_label = (
+        suggess = (
             "Workflow repository URL · Browse the [Snakemake Workflow Catalog]"
             "(https://snakemake.github.io/snakemake-workflow-catalog/docs/all_standardized_workflows.html)"
         )
-        selected = persistent_text_input(suggess_label, f"{key}-url", example).strip()
+        selected = persistent_text_input(suggess, f"{key}-url", example).strip() or None
     return selected
