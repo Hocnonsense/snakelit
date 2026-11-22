@@ -2,75 +2,21 @@
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Iterable, Mapping
-
-Renderer = Callable[[], None]
-"""What ``FileStore.show`` returns: renders a file into the page."""
-
-Editor = Callable[[str, bytes, str], bytes]
-"""A host editor: ``(path, data, key)`` -> the new bytes (unchanged -> ``data``)."""
-
-Editors = Mapping[str, Editor]
-"""Host editors keyed by file suffix."""
+from typing import Iterable, Protocol
 
 
-@dataclass(frozen=True)
-class Stat:
-    """What the file tree needs to know about a file."""
+class FileReader(Protocol):
+    """Content access used to compare file sets."""
 
-    size: int
-    mtime: datetime | None = None
+    def paths(self) -> Iterable[str]: ...
+    def read(self, path: str) -> bytes | None: ...
 
 
-class FileStore(ABC):
-    """A collection of POSIX, repo-relative file paths.
-
-    Bytes rather than text: tables and other binaries never have to pass
-    through a lossy ``str`` step.  ``show`` returns the renderer for a file,
-    or ``None`` when it cannot be shown.
-    """
-
-    @abstractmethod
-    def paths(self, dir="") -> Iterable[str]:
-        """Return every file path in the store (POSIX, repo-relative)."""
-
-    def tree(self):
-        """Nested view of :meth:`paths` for the file manager.
-
-        Directories are the dicts; leaves are the path strings themselves.
-        Hosts can override this when they can build the tree more cheaply.
-        """
-        tree: dict[str, Any] = {}
-        for path in self.paths():
-            parts = path.split("/")
-            node = tree
-            for part in parts[:-1]:
-                node = node.setdefault(part, {})
-            node[parts[-1]] = path
-        return tree
-
-    @abstractmethod
-    def stat(self, path: str) -> Stat | None:
-        """Return the file's size and mtime, or ``None`` if it is missing."""
-
-    @abstractmethod
-    def show(self, path: str, mode="Preview") -> Renderer | None:
-        """Return the renderer for ``path``, or ``None`` if not showable."""
-
-    @abstractmethod
-    def read(self, path: str) -> bytes | None:
-        """Return the content of ``path``, or ``None`` if it is missing."""
-
-    @abstractmethod
-    def write(self, path: str, data: bytes) -> None:
-        """Write ``data`` to ``path``, creating parents as needed."""
-
-    @abstractmethod
-    def rm(self, path: str) -> None:
-        """Remove the file at ``path``."""
+class MergeTarget(FileReader, Protocol):
+    def write(self, path: str, data: bytes) -> None: ...
+    def rm(self, path: str) -> None: ...
 
 
 @dataclass(frozen=True)

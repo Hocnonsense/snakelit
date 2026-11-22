@@ -24,13 +24,18 @@ _PRIMITIVE_DTYPES: dict[str, type[pl.DataType]] = {
 
 
 def validate_values(row: Mapping):
-    """Drop empty/null cells, as Snakemake does before validating a record."""
+    """Drop empty/null cells from a row, as Snakemake does before validation.
+
+    Snakemake's ``validate`` excludes NULL values from each record, so an empty
+    cell means "absent" (governed by the schema's ``required`` list) rather than
+    a value that must match the declared type.
+    """
     return {
         key: value for key, value in row.items() if value is not None and value != ""
     }
 
 
-def table_errors(table: pl.DataFrame, schema: Mapping | None):
+def table_errors(table: pl.DataFrame | None, schema: Mapping | None):
     """Validate every row of ``table`` against the row ``schema``."""
     errors: list[str] = []
     if not schema or table is None:
@@ -48,7 +53,14 @@ def schema_columns(schema) -> list[str]:
 
 
 def field_dtypes(fields: Iterable[str], schema: Mapping):
-    """Yield ``(field, dtype)`` for the declared types in ``fields``."""
+    """Yield ``(field, dtype)`` for every field in ``fields``.
+
+    A declared ``array`` field maps to ``List(String)`` and a declared primitive
+    to its dtype; a field the schema does not constrain (absent from
+    ``properties`` or without a recognised ``type``) yields ``None`` -- the caller
+    leaves that column untouched.  JSON Schema allows unlisted properties by
+    default, so an unconstrained field is not an error.
+    """
     properties = schema.get("properties") if isinstance(schema, dict) else None
     properties = properties if isinstance(properties, dict) else {}
     for name in fields:
@@ -70,16 +82,21 @@ def coerce_frame(
     schema: Mapping,
     errors: list[str] | None = None,
 ):
-    """Make ``frame`` match ``schema``; returns ``(frame, changed)``.
+    """Make ``frame`` match ``schema``.
 
-    Values that cannot be converted are left unchanged so validation can report
-    them; multiple values in a column the schema does not declare ``array`` are
-    reported (or raised when ``errors`` is ``None``).
+    A ``List(String)`` column the schema does not declare ``array`` holds at most
+    one value per row: several are an issue, one becomes the value, none becomes
+    null.  Declared ``array`` columns are kept as lists (a stored JSON string is
+    decoded).  Declared primitive columns are cast to their types.  A value that
+    cannot be converted is left unchanged so validation can report it.  Returns
+    ``(frame, changed)``.
     """
     changed = False
     for column, dtype in field_dtypes(frame.columns, schema):
         current = frame.schema[column]
         if current == _ARRAY_DTYPE and dtype != _ARRAY_DTYPE:
+            # A pivot list the schema does not declare ``array``: at most one
+            # value per row (several are an issue).
             lengths = frame[column].list.len().to_list()
             failing = [i for i, n in enumerate(lengths) if (n or 0) > 1]
             if failing:
@@ -122,8 +139,8 @@ def nullify(example: Mapping):
     """Canonicalize a columnar example: empty strings become ``None`` (absent).
 
     A table cell cannot distinguish ``""`` from missing, so the model keeps a
-    single empty representation (``None``); this keeps a sidecar free of a mix
-    of ``null`` and ``''``.
+    single empty representation (``None``); this keeps the sidecar free of a
+    mix of ``null`` and ``''``.
     """
     return {
         column: [None if value == "" else value for value in values]

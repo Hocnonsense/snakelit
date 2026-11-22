@@ -7,6 +7,11 @@ requires-python = ">=3.11"
 dependencies = ["streamlit>=1.55,<2", "PyYAML>=6,<7", "jsonschema>=4,<5"]
 
 [project.optional-dependencies]
+widgets = [
+    "streamlit-ace==0.1.1",
+    "streamlit-tags==1.2.8",
+    "streamlit-sortables==0.3.1",
+]
 tables = ["polars>=1.30,<3"]
 
 [build-system]
