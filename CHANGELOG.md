@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/Hocnonsense/snakelit/compare/v0.1.2...v0.1.3) (2026-11-22)
+
+
+### Bug Fixes
+
+* update docs to trigger version ([#6](https://github.com/Hocnonsense/snakelit/issues/6)) ([07ee986](https://github.com/Hocnonsense/snakelit/commit/07ee986ce122bfe841a065b9fafc3c33f6368387))
+
 ## [0.1.2](https://github.com/Hocnonsense/snakelit/compare/v0.1.1...v0.1.2) (2026-11-12)
 
 
