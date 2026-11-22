@@ -54,9 +54,13 @@ def schema_table(
     frame = table.load(data, suffix=format, errors=[])
     can_text = format in ("csv", "tsv")
 
-    if can_render_form := frame is not None:
+    if frame is None:
+        if not can_text:
+            return errors.append(f"Cannot edit broken {format.upper()} table as text.")
+        render_form = None  # type: ignore
+    else:
 
-        def render_form(problems: list[str]) -> bytes | None:
+        def render_form(problems: list[str]):
             edited = create_form(frame, schema, key=key, errors=problems)
             if schema:
                 edited, _ = coerce_frame(edited, schema, problems)
@@ -71,10 +75,6 @@ def schema_table(
                 problems.append(str(error))
                 return None
             return updated
-
-    elif not can_text:
-        errors.append(f"Cannot edit broken {format.upper()} table as text.")
-        return None
 
     def validate_table(contents: bytes, schema: Mapping | None):
         problems: list[str] = []
@@ -95,7 +95,7 @@ def schema_table(
         key=key,
         format=format,
         can_text=can_text,
-        render_form=render_form if can_render_form else None,
+        render_form=render_form,
         validate=validate_table,
     )
 

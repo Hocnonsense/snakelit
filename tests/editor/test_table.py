@@ -19,7 +19,7 @@ from snakelit.editor.table import create_form
 if "frame" not in st.session_state:
     st.session_state["frame"] = pl.DataFrame({"sample": ["a"], "count": [1]})
 errors = []
-edited = create_form(st.session_state["frame"], errors, key="t")
+edited = create_form(st.session_state["frame"], key="t", errors=errors)
 st.session_state["edited"] = edited
 st.session_state["frame"] = edited
 st.session_state["errors"] = errors
@@ -44,7 +44,8 @@ def test_renders_the_table_without_errors():
     assert at.session_state["edited"].columns == ["sample", "count"]
 
 
-def test_column_operations_return_the_edited_table():
+def test_column_operations_return_the_edited_table(monkeypatch):
+    monkeypatch.setattr("snakelit.editor.table.sort_items", None)
     at = _app()
 
     at.text_input(key="t-new-column").set_value("extra")
@@ -198,7 +199,7 @@ if "visible" not in st.session_state:
     st.session_state["visible"] = True
 errors = []
 if st.session_state["visible"]:
-    edited = create_form(st.session_state["frame"], errors, key="t")
+    edited = create_form(st.session_state["frame"], key="t", errors=errors)
     st.session_state["edited"] = edited
 """
 
@@ -228,7 +229,7 @@ SCHEMA = {"type": "object", "properties": {"count": {"type": "integer"}}}
 if "frame" not in st.session_state:
     st.session_state["frame"] = pl.DataFrame({"count": ["1"]})
 errors = []
-edited = create_form(st.session_state["frame"], errors, SCHEMA, key="t")
+edited = create_form(st.session_state["frame"], SCHEMA, key="t", errors=errors)
 st.session_state["edited"] = edited
 """
 

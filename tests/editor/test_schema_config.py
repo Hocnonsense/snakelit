@@ -3,6 +3,8 @@
 import sys
 from pathlib import Path
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from streamlit.testing.v1 import AppTest  # noqa: E402
@@ -46,6 +48,12 @@ st.session_state["edited"] = (
     yaml.load(updated.decode()) if updated is not None else CONFIG
 )
 """
+
+
+@pytest.fixture
+def native_text_editor(monkeypatch):
+    """Exercise the editable text-area fallback through AppTest."""
+    monkeypatch.setitem(sys.modules, "streamlit_ace", None)
 
 
 def _app(script=SCRIPT):
@@ -142,7 +150,7 @@ def test_scientific_float_stays_text():
     assert at.session_state["edited"]["threshold"] == "1e-5"
 
 
-def test_text_mode_shows_the_schema_read_only():
+def test_text_mode_shows_the_schema_read_only(native_text_editor):
     at = _app()
     assert not at.code
     at.toggle(key="cfg-show-schema").set_value(True).run()
@@ -155,7 +163,7 @@ def test_text_mode_shows_the_schema_read_only():
     assert any("properties" in (item.value or "") for item in at.code)
 
 
-def test_text_mode_is_validated_against_the_schema():
+def test_text_mode_is_validated_against_the_schema(native_text_editor):
     at = _app()
     _by_key(at.radio, "cfg-editor-mode").set_value("Text Editor")
     at.run()
@@ -167,7 +175,7 @@ def test_text_mode_is_validated_against_the_schema():
     assert at.session_state["edited"]["samples"] == "samples.tsv"
 
 
-def test_text_mode_returns_no_text_on_invalid_yaml():
+def test_text_mode_returns_no_text_on_invalid_yaml(native_text_editor):
     at = _app()
     _by_key(at.radio, "cfg-editor-mode").set_value("Text Editor")
     at.run()
@@ -202,7 +210,7 @@ def test_without_schema_infers_a_form_from_the_config():
     assert _by_key(at.number_input, "raw-a").value == 1
 
 
-def test_invalid_raw_yaml_returns_no_text():
+def test_invalid_raw_yaml_returns_no_text(native_text_editor):
     at = _app(RAW_SCRIPT)
     _by_key(at.radio, "raw-editor-mode").set_value("Text Editor")
     at.run()
@@ -224,7 +232,7 @@ st.session_state["errors"] = errors
 """
 
 
-def test_broken_text_opens_in_the_text_editor_and_can_be_repaired():
+def test_broken_text_opens_in_the_text_editor_and_can_be_repaired(native_text_editor):
     at = _app(BROKEN_SCRIPT)
 
     assert [item.key for item in at.radio] == []
@@ -309,7 +317,7 @@ def test_form_writes_changed_json_as_json():
     assert json.loads(at.session_state["updated"]) == {"a": 3}
 
 
-def test_clearing_valid_text_returns_empty_bytes():
+def test_clearing_valid_text_returns_empty_bytes(native_text_editor):
     at = _app(RAW_SCRIPT)
     at.radio(key="raw-editor-mode").set_value("Text Editor").run()
     at.text_area(key="raw-editor").set_value("").run()
@@ -318,7 +326,7 @@ def test_clearing_valid_text_returns_empty_bytes():
     assert at.session_state["updated"] == b""
 
 
-def test_text_mode_returns_original_formatting_with_the_edit():
+def test_text_mode_returns_original_formatting_with_the_edit(native_text_editor):
     at = _app(RAW_SCRIPT)
     at.radio(key="raw-editor-mode").set_value("Text Editor").run()
     text = "# unit\na: 2  # count\n"
@@ -336,7 +344,7 @@ def test_invalid_field_blocks_other_form_changes():
     assert at.session_state["updated"] is None
 
 
-def test_yaml_null_is_validated_as_a_value():
+def test_yaml_null_is_validated_as_a_value(native_text_editor):
     at = _app()
     at.radio(key="cfg-editor-mode").set_value("Text Editor").run()
     at.text_area(key="cfg-editor").set_value("null").run()
@@ -363,7 +371,7 @@ def test_float_root_is_editable_without_rewriting_untouched_yaml():
     assert at.radio[0].value == "Form"
     assert at.session_state.updated is None
     at.number_input[0].set_value(0.8).run()
-    assert yaml.load(at.session_state.updated) == 0.8
+    assert yaml.load(at.session_state["updated"].decode("utf-8")) == 0.8
 
 
 def test_list_root_writes_a_json_array_and_validates_items():
@@ -372,7 +380,7 @@ def test_list_root_writes_a_json_array_and_validates_items():
     at = _root_app(b"[1, 2]", {"type": "array", "items": {"type": "integer"}}, "json")
     assert at.session_state.updated is None
     at.text_area[0].set_value("3\n4").run()
-    assert yaml.load(at.session_state.updated) == [3, 4]
+    assert yaml.load(at.session_state["updated"].decode("utf-8")) == [3, 4]
     at.text_area[0].set_value("3\nwrong").run()
     assert at.session_state.errors
     assert at.session_state.updated is None
