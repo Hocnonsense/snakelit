@@ -150,12 +150,12 @@ from snakelit.version_picker import repository_picker
 st.session_state.repo = repository_picker(["a/first", "b/second"], initial="b/second", key="wf")
 """).run()
     source = at.selectbox(key="wf-source")
-    assert source.options == ["b/second", "a/first", "Enter repository URL"]
+    assert source.options == ["b/second", "a/first", "Enter URL in text box"]
     assert at.session_state.repo == "b/second"
-    source.set_value("Enter repository URL").run()
+    source.set_value("Enter URL in text box").run()
     assert at.session_state.repo is None
     at.text_input(key="wf-url").set_value(" manual/repo ").run()
     assert at.session_state.repo == "manual/repo"
     at.selectbox(key="wf-source").set_value("a/first").run()
-    at.selectbox(key="wf-source").set_value("Enter repository URL").run()
+    at.selectbox(key="wf-source").set_value("Enter URL in text box").run()
     assert at.session_state.repo == "manual/repo"
