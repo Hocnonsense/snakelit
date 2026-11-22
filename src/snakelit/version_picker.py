@@ -233,17 +233,17 @@ def repository_picker(
     repositories: Iterable[str], *, initial: str | None = None, key: str = "workflow"
 ) -> str | None:
     """Select a repository supplied by the host or enter a URL manually."""
-    manual = "Enter repository URL"
-    options = list(dict.fromkeys(repo for repo in (initial, *repositories) if repo))
-    selected = st.selectbox(
-        "Workflow repository",
-        [*options, manual],
-        key=f"{key}-source",
-        help="Choose a known workflow or enter its repository URL.",
-    )
-    if selected != manual:
-        return selected
-    url = persistent_text_input(
-        "Repository URL", f"{key}-url", "https://github.com/owner/repo"
-    )
-    return url.strip() or None
+    manual = "Enter URL in text box"
+    options = [
+        *dict.fromkeys(repo for repo in (initial, *repositories) if repo),
+        manual,
+    ]
+    selected = st.selectbox("Select workflow repository", options, key=f"{key}-source")
+    if selected == manual:
+        example = "https://github.com/snakemake-workflows/rna-seq-kallisto-sleuth"
+        suggess_label = (
+            f"Workflow repository URL · Browse the [Snakemake Workflow Catalog]"
+            "(https://snakemake.github.io/snakemake-workflow-catalog/docs/all_standardized_workflows.html)"
+        )
+        selected = persistent_text_input(suggess_label, f"{key}-url", example).strip()
+    return selected
