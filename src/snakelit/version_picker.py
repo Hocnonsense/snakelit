@@ -19,6 +19,7 @@ from typing import Callable, Iterable, Self
 import streamlit as st
 
 from .types import Ref
+from .utils.ui_components import persistent_text_input
 
 LoadRefs = Callable[[str], Iterable[Ref]]
 
@@ -226,3 +227,23 @@ def version_picker(init_ref: str | None, load: LoadRefs, *, key: str = "snakelit
         selection()
 
     return state.current
+
+
+def repository_picker(
+    repositories: Iterable[str], *, initial: str | None = None, key: str = "workflow"
+) -> str | None:
+    """Select a repository supplied by the host or enter a URL manually."""
+    manual = "Enter repository URL"
+    options = list(dict.fromkeys(repo for repo in (initial, *repositories) if repo))
+    selected = st.selectbox(
+        "Workflow repository",
+        [*options, manual],
+        key=f"{key}-source",
+        help="Choose a known workflow or enter its repository URL.",
+    )
+    if selected != manual:
+        return selected
+    url = persistent_text_input(
+        "Repository URL", f"{key}-url", "https://github.com/owner/repo"
+    )
+    return url.strip() or None
