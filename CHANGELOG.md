@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/Hocnonsense/snakelit/compare/v0.1.3...v0.2.0) (2026-11-22)
+
+
+### Features
+
+* repository_picker ([#8](https://github.com/Hocnonsense/snakelit/issues/8)) ([1239935](https://github.com/Hocnonsense/snakelit/commit/1239935512d1eeb7d9a5013b2f7872fb25b9324c))
+
 ## [0.1.3](https://github.com/Hocnonsense/snakelit/compare/v0.1.2...v0.1.3) (2026-11-22)
 
 
