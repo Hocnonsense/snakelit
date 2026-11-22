@@ -19,13 +19,25 @@ For string values that look like paths, `create_form(..., edit_file=callback)` a
 Schemas are read-only and used to choose widgets, coerce values and report errors.
 
 Both file editors delegate mode selection, raw text editing, validation before write-back, and change detection in text mode to `schema_editor`. Each supplies its optional form renderer, a `can_text` flag, and a `validate(data, schema)` callback.
-The validator checks the proposed file bytes on either path, or the original bytes when unchanged. They share an optional **View schema** toggle. The read-only reference starts closed and can be opened in either mode. The underlying `text_editor` only renders the text input.
+The validator checks the proposed file bytes on either path, or the original bytes when unchanged. They share an optional **View schema** toggle. The read-only reference starts closed and can be opened in either mode.
 
 #### Configuration
 
 `schema_config(data, errors, schema, ...)` combines Form and Text modes and preserves the original bytes when the form is untouched. Mappings use field widgets and nested tabs; a list or scalar root uses a single Value widget.
+Use `snakelit.editor.config.create_form` to edit a mapping in place.
 
-Use `create_form(config, schema, key_prefix="workflow")` to edit a mapping in place. Use `schema_config` for file edits that need to preserve the user's source text.
+```python
+from snakelit.editor.config import schema_config
+
+updated = schema_config(
+    data,
+    [],
+    schema,
+    *,
+    key="config",
+    format="yaml",
+)
+```
 
 Passing `edit_file=callback` adds a button next to string values that look like paths; the host decides whether to open or create the file.
 
@@ -37,10 +49,9 @@ Passing `edit_file=callback` adds a button next to string values that look like 
 ```python
 from snakelit.editor.table import schema_table
 
-errors: list[str] = []
 updated = schema_table(
     data,
-    errors,
+    [],
     schema,
     key="samples",
     format="tsv",
