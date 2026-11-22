@@ -58,6 +58,11 @@ updated = schema_table(
 )
 ```
 
+### Select repository and version picker
+
+Use `repository_picker(repositories, initial=..., key=...)` from `snakelit.version_picker` to choose a host-supplied repository or enter a URL.
+Pass a ref loader for the selected repository to `version_picker`, with a repository-specific widget key.
+
 ### Refs
 
 `version_picker(init_ref, load, key=...)` asks the host for refs lazily via `load(kind)`, where `kind` is `"tag"`, `"branch"` or `"commit"`. The host can serve them from its own workflow store or from the GitHub API.
