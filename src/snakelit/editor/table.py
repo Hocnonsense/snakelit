@@ -184,15 +184,23 @@ def editable_table(
     data_key = f"{key}-data"
     base_key = f"{key}-base"
     revision_key = f"{key}-revision"
-    if reset or base_key not in st.session_state:
+    revision = st.session_state.setdefault(revision_key, 1)
+    editor_key = f"{key}-{revision}"
+    widget_exists = editor_key in st.session_state
+    # A remounted editor has no row deltas. Reuse its key with the latest
+    # base; only a still-mounted editor needs a new key to discard old edits.
+    if reset or not widget_exists or base_key not in st.session_state:
         st.session_state[base_key] = st.session_state[data_key]
-        st.session_state[revision_key] = st.session_state.get(revision_key, 0) + 1
+        if widget_exists:
+            revision += 1
+            st.session_state[revision_key] = revision
+            editor_key = f"{key}-{revision}"
     edited = st.data_editor(
         st.session_state[base_key].to_pandas(),
         num_rows="dynamic",
         width="stretch",
         hide_index=True,
-        key=f"{key}-{st.session_state[revision_key]}",
+        key=editor_key,
         column_config=column_config,
     )
     result = _from_pandas(edited)
