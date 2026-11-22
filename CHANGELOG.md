@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/Hocnonsense/snakelit/compare/v0.1.2...v0.1.3) (2026-11-22)
+
+
+### Bug Fixes
+
+* include streamlit-ace/tags/sortables into snakelit and share widgets from srptn ([#5](https://github.com/Hocnonsense/snakelit/issues/5)) ([3acd6dc](https://github.com/Hocnonsense/snakelit/commit/3acd6dc1f4a000301bcdc5a80f1ce77cdbd67f04))
+
 ## [0.1.2](https://github.com/Hocnonsense/snakelit/compare/v0.1.1...v0.1.2) (2026-11-12)
 
 
