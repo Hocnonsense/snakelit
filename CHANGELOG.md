@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/Hocnonsense/snakelit/compare/v0.2.0...v0.2.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* reset if not widget_exists ([#10](https://github.com/Hocnonsense/snakelit/issues/10)) ([3e27770](https://github.com/Hocnonsense/snakelit/commit/3e277701bb1495c986a998178f0d9549ecb81d94))
+
 ## [0.2.0](https://github.com/Hocnonsense/snakelit/compare/v0.1.3...v0.2.0) (2026-11-22)
 
 
