@@ -8,23 +8,15 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from snakelit.merge import diff_files, file_status  # noqa: E402
-from snakelit.types import FileStore, Stat  # noqa: E402
-from snakelit.utils.zip import ArchiveError, unzip, zipped  # noqa: E402
+from snakelit.utils import zip as archive  # noqa: E402
 
 
-class Store(FileStore):
+class Store:
     def __init__(self, files=None):
         self.files = dict(files or {})
 
     def paths(self, dir=""):
         return list(self.files)
-
-    def stat(self, path):
-        content = self.files.get(path)
-        return None if content is None else Stat(len(content))
-
-    def show(self, path, mode="Preview"):
-        return None
 
     def read(self, path):
         return self.files.get(path)
@@ -37,26 +29,22 @@ class Store(FileStore):
 
 
 def test_unzip_extracts_files_and_skips_metadata():
-    store = Store(
-        {
-            "workflow/Snakefile": b"rule all:\n",
-            "__MACOSX/._Snakefile": b"junk",
-            ".DS_Store": b"junk",
-        }
-    )
-
-    assert unzip(zipped(store)) == {"workflow/Snakefile": b"rule all:\n"}
+    files = {
+        "workflow/Snakefile": b"rule all:\n",
+        "__MACOSX/._Snakefile": b"junk",
+        ".DS_Store": b"junk",
+    }
+    assert archive.load(archive.dump(files)) == {"workflow/Snakefile": b"rule all:\n"}
 
 
 def test_unzip_rejects_an_invalid_archive():
-    with pytest.raises(ArchiveError, match="valid zip"):
-        unzip(b"not a zip")
+    with pytest.raises(archive.ArchiveError, match="valid zip"):
+        archive.load(b"not a zip")
 
 
-def test_zipped_round_trips_a_store():
-    store = Store({"a.txt": b"A", "dir/b.bin": b"B"})
-
-    assert unzip(zipped(store)) == {"a.txt": b"A", "dir/b.bin": b"B"}
+def test_zip_round_trips_a_file_mapping():
+    files = {"a.txt": b"A", "dir/b.bin": b"\x00\xff", "empty.txt": b""}
+    assert archive.load(archive.dump(files)) == files
 
 
 def test_diff_files_only_keeps_differing_paths():

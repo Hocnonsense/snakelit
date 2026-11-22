@@ -1,7 +1,7 @@
-"""Zip archives for :class:`FileStore` contents.
+"""Convert between ZIP bytes and a mapping of file paths to contents.
 
-``unzip`` reads an uploaded archive into ``path -> bytes`` while rejecting
-paths that escape the store.  ``zipped`` writes every current store file
+``load`` reads an uploaded archive into ``path -> bytes`` while rejecting
+paths that escape the store.  ``dump`` writes every supplied file
 into a new archive, so the two functions round-trip.
 """
 
@@ -9,9 +9,8 @@ from __future__ import annotations
 
 import io
 import zipfile
+from collections.abc import Mapping
 from pathlib import PurePosixPath
-
-from ..types import FileStore
 
 IGNORED_PATTERNS = [".DS_Store", "__MACOSX", "__pycache__"]
 
@@ -20,7 +19,7 @@ class ArchiveError(Exception):
     """The archive cannot be read or contains no usable files."""
 
 
-def unzip(data: bytes):
+def load(data: bytes):
     """Read a zip archive into ``path -> bytes``, rejecting unsafe paths."""
     files: dict[str, bytes] = {}
     try:
@@ -38,14 +37,12 @@ def unzip(data: bytes):
     return files
 
 
-def zipped(store: FileStore):
-    """A zip of every file in ``store``."""
+def dump(files: Mapping[str, bytes]):
+    """Serialize relative file paths and their contents to ZIP bytes."""
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        for path in sorted(store.paths()):
-            content = store.read(path)
-            if content is not None:
-                archive.writestr(path, content)
+        for path in sorted(files):
+            archive.writestr(path, files[path])
     return buffer.getvalue()
 
 

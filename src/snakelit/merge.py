@@ -1,7 +1,7 @@
-"""Compare an incoming file set with a :class:`FileStore`.
+"""Compare an incoming file set with a :class:`MergeTarget`.
 
 The merge view is deliberately store-agnostic: it reads and writes through
-the :class:`FileStore` protocol, and the caller supplies the baseline bytes
+the :class:`MergeTarget` protocol, and the caller supplies the baseline bytes
 (used only to describe what changed) and the cancel action.
 """
 
@@ -13,10 +13,10 @@ import streamlit as st
 
 from .filetypes import BINARY_SUFFIXES, IMAGE_SUFFIXES, suffix
 from .preview import binary_view, image_view
-from .types import FileStore
+from .types import FileReader, MergeTarget
 
 
-def diff_files(store: FileStore, incoming: Mapping[str, bytes]):
+def diff_files(store: FileReader, incoming: Mapping[str, bytes]):
     """Map every differing path to its incoming bytes (``None`` = deleted)."""
     return {
         path: incoming.get(path)
@@ -49,7 +49,7 @@ def file_status(base: bytes | None, local: bytes | None, incoming: bytes | None)
 
 
 def render_merge(
-    store: FileStore,
+    store: MergeTarget,
     header: str,
     files: dict[str, bytes | None],
     *,
@@ -83,7 +83,7 @@ def render_merge(
 
 
 def render_file(
-    store: FileStore,
+    store: MergeTarget,
     path: str,
     remote: bytes | None,
     container=None,

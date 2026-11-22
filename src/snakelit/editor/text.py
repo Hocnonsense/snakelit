@@ -2,24 +2,29 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping
-
 import streamlit as st
 
-from ..utils.schema import is_schema
-from ..utils.yaml import dump as dump_yaml
 
-
-def schema_text_editor(
+def text_editor(
     text: str,
-    schema: Mapping[str, Any] | None,
     key: str,
     *,
     height: int = 420,
-):
-    """Render the raw text editor, with the schema beside it when given."""
-    editor = st
-    if is_schema(schema):
-        editor, viewer = st.columns([2, 1])
-        viewer.code(dump_yaml(schema), "yaml", height=height)
-    return editor.text_area("Text", value=text, key=f"{key}-editor", height=height)
+    language: str | None = None,
+) -> str:
+    """Render the raw text editor and return its contents."""
+    if language in ("yaml", "json"):
+        try:
+            from streamlit_ace import st_ace
+        except ModuleNotFoundError as error:
+            if error.name != "streamlit_ace":
+                raise
+        else:
+            return st_ace(
+                text,
+                language=language,
+                height=height,
+                key=f"{key}-ace",
+                auto_update=True,
+            )
+    return st.text_area("Text", value=text, key=f"{key}-editor", height=height)

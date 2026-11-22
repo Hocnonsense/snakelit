@@ -1,8 +1,8 @@
-"""JSON helpers, mirroring :mod:`snakelit.utils.yaml`."""
-
-from __future__ import annotations
+"""Serialize workflow configuration as JSON."""
 
 import json
+
+# use yaml.load to load json.
 
 
 def dump(data):

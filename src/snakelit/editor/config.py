@@ -1,32 +1,23 @@
-"""Config editors driven by a JSON schema.
-
-``schema_config`` renders a config document as widgets and rebuilds it from the
-widget values on every rerun, so it never mutates the caller's object.  The
-schema is optional and read-only: with one, widgets and validation follow it;
-without one, the config is edited as raw YAML.  Only mappings get the form;
-other YAML documents (lists, scalars) fall back to the text editor.  Hosts
-discover or let the user choose the schema; nothing in here edits or writes it.
-"""
+"""Shared workflow config form and raw text editor."""
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any, Callable, Mapping
 
 import streamlit as st
 
-from ..utils.st_layouts import st_container_maxheight
+try:
+    from streamlit_tags import st_tags
+except ModuleNotFoundError as error:
+    if error.name != "streamlit_tags":
+        raise
+    st_tags = None
+
 from ..utils.schema import infer_type, is_schema, property_schema, validate
-from ..utils.yaml import SCIENTIFIC_FLOAT, dump as dump_yaml, load
-from .text import schema_text_editor
-
-
-def _dump(data, format: str):
-    if format == "yaml":
-        return dump_yaml(data)
-    from ..utils.json import dump as dump_json
-
-    return dump_json(data)
+from ..utils import json, yaml
+from .schema import schema_editor
 
 
 def _looks_like_path(value: str):
@@ -42,8 +33,8 @@ def schema_config(
     header="Configuration Editor",
     *,
     key: str = "config",
-    edit_file: Callable[[str], None] | None = None,
     format: str = "yaml",
+    edit_file: Callable[[str], None] | None = None,
 ):
     """Render an editor for a config file and return the new bytes.
 
@@ -57,46 +48,79 @@ def schema_config(
     open or ignore the file.  ``format`` is ``"yaml"`` or ``"json"`` and
     selects the serializer (parsing uses the YAML loader for both).
     """
-    text = data.decode("utf-8")
-    height = 420
+    dump = (yaml if format == "yaml" else json).dump
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as error:
+        errors.append(str(error))
+        return None
     probe: list[str] = []
-    config = load(text, probe)
-    if config is None and not probe:
+    config = yaml.load(text, probe)
+    if config is None and not probe and not text.strip():
         config = {}
 
-    if isinstance(config, dict):
-        mode = st.radio(
-            header,
-            ["Form", "Text Editor"],
-            help="Configuration editor mode",
-            horizontal=True,
-            key=f"{key}-editor-mode",
-        )
-        if mode == "Form":
-            # Compare canonical YAML, not the source text: comments and
-            # formatting must survive an untouched form.
-            original = _dump(config, format)
-            with st_container_maxheight(f"{key}-form-container", height=height):
-                create_form(config, schema, "", key_prefix=key, edit_file=edit_file)
-            before = len(errors)
-            errors.extend(validate(config, schema))
-            if len(errors) > before:
-                return None
-            updated = _dump(config, format)
-            return None if updated == original else updated.encode("utf-8")
+    can_render_form = not probe and isinstance(config, (dict, list, str, int, float))
+    # Streamlit numeric inputs must round-trip through a JavaScript number.
+    if isinstance(config, int) and abs(config) > 2**53 - 1:
+        can_render_form = False
+    elif isinstance(config, float) and not math.isfinite(config):
+        can_render_form = False
 
-    # Unparseable input is still editable: the text area is the source of
-    # truth and reports its own parse/validation errors.
-    updated = schema_text_editor(text, schema, key, height=height)
-    probe.clear()
-    parsed = load(updated, probe)
-    if not probe:
-        probe.extend(validate(parsed, schema) if parsed else ())
-        if not probe:
-            return None if updated == text else updated.encode("utf-8")
-    errors.extend(probe)
+    def render_form(problems: list[str]) -> bytes | None:
+        original = dump(config)
+        if isinstance(config, dict):
+            create_form(
+                config, schema, "", key_prefix=key, edit_file=edit_file, errors=problems
+            )
+            edited = config
+        else:
+            # Render an incompatible root as its actual type. Validation can then
+            # report the mismatch without the widget silently coercing the value.
+            inferred = infer_type(config)
+            field_schema = {**inferred, **(schema or {})}
+            types = _types(field_schema)
+            if len(types) != 1 or (
+                inferred["type"] not in types
+                and not (inferred["type"] == "integer" and types == ["number"])
+            ):
+                field_schema["type"] = inferred["type"]
+            edited = get_input_element(
+                "Value",
+                config,
+                field_schema,
+                f"{key}:root",
+                required=False,
+                edit_file=edit_file,
+                errors=problems,
+            )
+        if problems:
+            return None
+        updated = dump(edited)
+        if updated == original or updated == text:
+            return None
+        return updated.encode("utf-8")
+
+    def validate_config(contents: bytes, schema: Mapping | None):
+        problems: list[str] = []
+        parsed = yaml.load(contents.decode("utf-8"), problems)
+        if not problems:
+            problems.extend(validate(parsed, schema))
+        return problems
+
+    return schema_editor(
+        data,
+        errors,
+        schema,
+        header,
+        key=key,
+        format=format,
+        can_text=True,
+        render_form=render_form if can_render_form else None,
+        validate=validate_config,
+    )
 
 
+# The form traversal and field controls originate in SRPtn's config_editor.py.
 def create_form(
     config: dict,
     schema: Mapping[str, Any] | None,
@@ -104,44 +128,36 @@ def create_form(
     *,
     key_prefix: str = "config",
     edit_file: Callable[[str], None] | None = None,
+    errors: list[str] | None = None,
 ):
-    """Render widgets for ``config`` in place, in configuration order.
-
-    Leaf values are rendered first; nested mappings are collected into
-    ``st.tabs`` at their own level, as in SRPtn.  A schema entry is used when
-    it exists; otherwise the widget is inferred from the value.
-    No schema is constructed or modified.
-    """
-    required_fields = set((schema or {}).get("required") or ())
-    new_tabs: list[tuple[str, dict, Mapping[str, Any] | None]] = []
-
+    """Render the config in place, using a separate widget namespace per editor."""
+    required_fields = (schema or {}).get("required", [])
+    new_tabs = []
     for key, value in config.items():
+        unique_element_id = update_key(parent_key, key)
         input_dict = property_schema(schema, key)
-        if isinstance(value, dict):
-            if input_dict is not None and not is_schema(input_dict):
-                config[key] = _raw(
-                    value,
-                    key,
-                    f"{key_prefix}-{update_key(parent_key, key)}",
-                    None,
-                )
-            else:
-                new_tabs.append((key, value, input_dict))
-            continue
-        config[key] = _value(
-            value,
-            input_dict or infer_type(value),
-            update_key(parent_key, key),
-            key_prefix,
-            label=key,
-            required=key in required_fields,
-            edit_file=edit_file,
-        )
+        if not isinstance(value, dict):
+            config[key] = get_input_element(
+                key,
+                value,
+                input_dict or infer_type(value),
+                f"{key_prefix}-{unique_element_id}",
+                required=key in required_fields,
+                edit_file=edit_file,
+                errors=errors,
+            )
+        elif input_dict is not None and not is_schema(input_dict):
+            config[key] = _raw(
+                value, key, f"{key_prefix}-{unique_element_id}", None, errors
+            )
+        else:
+            new_tabs.append((key, value))
 
     if new_tabs:
-        tabs = st.tabs([key for key, _, _ in new_tabs])
-        for tab, (key, value, new_schema) in enumerate(new_tabs):
+        tabs = st.tabs([key for key, _ in new_tabs])
+        for tab, (key, value) in enumerate(new_tabs):
             updated_parent_key = update_key(parent_key, key)
+            new_schema = property_schema(schema, key)
             with tabs[tab]:
                 create_form(
                     value,
@@ -149,64 +165,74 @@ def create_form(
                     updated_parent_key,
                     key_prefix=key_prefix,
                     edit_file=edit_file,
+                    errors=errors,
                 )
 
 
-def _value(
-    value,
-    schema: Mapping[str, Any],
-    parent_key: str,
-    key_prefix: str,
-    *,
+def get_input_element(
     label: str,
+    value,
+    input_dict: Mapping[str, Any],
+    key: str,
+    *,
     required: bool,
-    edit_file: Callable[[str], None] | None = None,
+    edit_file: Callable[[str], None] | None,
+    errors: list[str] | None = None,
 ):
-    unique_element_id = f"{key_prefix}-{parent_key}"
-    help_text = schema.get("description")
+    """Render a field and return its value to the caller's config."""
+    help_text = input_dict.get("description")
     caption = f"{label} *" if required else label
-    types = _types(schema)
+    types = _types(input_dict)
 
-    if isinstance(schema.get("enum"), list):
-        options = list(schema["enum"])
+    if isinstance(input_dict.get("enum"), list):
+        options = list(input_dict["enum"])
         if value not in options:
             options = [value, *options]
         return st.selectbox(
             caption,
             options,
             index=options.index(value),
-            key=unique_element_id,
+            key=key,
             help=help_text,
         )
 
     if isinstance(value, list):
-        return _array(value, schema, caption, unique_element_id, help_text)
+        return _array(value, input_dict, caption, key, help_text, errors)
 
     if isinstance(value, Mapping):
-        return _raw(value, caption, unique_element_id, help_text)
+        return _raw(value, caption, key, help_text, errors)
 
     if "boolean" in types or (not types and isinstance(value, bool)):
-        return st.checkbox(
-            caption, value=bool(value), key=unique_element_id, help=help_text
-        )
+        return st.checkbox(caption, value=bool(value), key=key, help=help_text)
 
     if "integer" in types or "number" in types:
-        return _number(value, types, caption, unique_element_id, help_text)
+        return _number(value, types, caption, key, help_text)
 
     if not types and isinstance(value, (int, float)):
-        return _number(value, ["number"], caption, unique_element_id, help_text)
+        return _number(value, ["number"], caption, key, help_text)
 
     if "string" in types or not types or value is None:
         return _text(
             value,
             caption,
-            unique_element_id,
+            key,
             help_text,
             nullable="null" in types,
             edit_file=edit_file,
         )
 
-    return _raw(value, caption, unique_element_id, help_text)
+    return _raw(value, caption, key, help_text, errors)
+
+
+def handle_string_input(
+    label: str,
+    value: str,
+    key: str,
+    *,
+    help_text: str | None = None,
+):
+    """Handle input for string types."""
+    return st.text_input(label=label, value=value, key=key, help=help_text)
 
 
 def _text(
@@ -220,10 +246,11 @@ def _text(
 ):
     text = "" if value is None else str(value)
     if edit_file is None or not _looks_like_path(text):
-        edited = st.text_input(caption, value=text, key=key, help=help_text)
+        edited = handle_string_input(caption, text, key, help_text=help_text)
     else:
         field, action = st.columns([5, 1], vertical_alignment="bottom")
-        edited = field.text_input(caption, value=text, key=key, help=help_text)
+        with field:
+            edited = handle_string_input(caption, text, key, help_text=help_text)
         action.button(
             "Edit",
             key=f"{key}-file",
@@ -240,7 +267,7 @@ def _number(value, types: list[str], caption: str, key: str, help_text: str | No
     # Scientific-notation floats are strings by convention and must stay so.
     if isinstance(value, str) or value is None or not types:
         text = "" if value is None else str(value)
-        edited = st.text_input(caption, value=text, key=key, help=help_text)
+        edited = handle_string_input(caption, text, key, help_text=help_text)
         return _parse_number(edited)
 
     integer = "integer" in types
@@ -266,7 +293,7 @@ def _parse_number(text: str):
     stripped = text.strip()
     if not stripped:
         return None
-    if SCIENTIFIC_FLOAT.match(stripped):
+    if yaml.SCIENTIFIC_FLOAT.match(stripped):
         return stripped
     try:
         return int(stripped)
@@ -284,18 +311,40 @@ def _array(
     caption: str,
     key: str,
     help_text: str | None,
+    errors: list[str] | None,
 ):
     items = schema.get("items") or {}
     if not isinstance(value, list):
         value = [] if value is None else [value]
 
+    string_items = _types(items) == ["string"] and all(
+        isinstance(item, str) for item in value
+    )
     if (
-        is_schema(items)
+        st_tags is not None
+        and string_items
+        and schema.get("uniqueItems")
+        and len(set(value)) == len(value)
+    ):
+        return handle_array_input(caption, value, key)
+
+    if (
+        any(
+            item is None
+            or isinstance(item, str)
+            and (not item or "\n" in item or "\r" in item)
+            for item in value
+        )
+        or (any(isinstance(item, str) for item in value) and not string_items)
+        or is_schema(items)
         or "array" in _types(items)
         or any(isinstance(item, (Mapping, list)) for item in value)
     ):
-        parsed = _raw(value, caption, key, help_text)
-        return parsed if isinstance(parsed, list) else value
+        parsed = _raw(value, caption, key, help_text, errors)
+        if not isinstance(parsed, list):
+            _field_error(f"{caption}: expected a list", errors)
+            return value
+        return parsed
 
     text = "\n".join("" if item is None else str(item) for item in value)
     edited = st.text_area(
@@ -305,31 +354,44 @@ def _array(
         help=help_text,
         height=min(200, 40 + 22 * max(1, len(value))),
     )
+    if edited == text:
+        return value
+    if string_items:
+        return edited.splitlines()
     parsed = []
     for line in edited.splitlines():
         if not line.strip():
             continue
         try:
-            item = load(line)
+            item = yaml.load(line)
         except Exception:  # noqa: BLE001 - shown to the user
-            st.error(f"Invalid value in {caption}: {line!r}")
+            _field_error(f"Invalid value in {caption}: {line!r}", errors)
             return value
         parsed.append(line.strip() if isinstance(item, (dict, list)) else item)
     return parsed
 
 
-def _raw(value, caption: str, key: str, help_text: str | None):
+def _field_error(message: str, errors: list[str] | None):
+    if errors is None:
+        st.error(message)
+    else:
+        errors.append(message)
+
+
+def _raw(
+    value, caption: str, key: str, help_text: str | None, errors: list[str] | None
+):
     edited = st.text_area(
         f"{caption} (YAML)",
-        value=dump_yaml(value),
+        value=yaml.dump(value),
         key=key,
         help=help_text,
         height=160,
     )
-    errors = []
-    parsed = load(edited, errors)
-    if errors:
-        st.error(errors[0])
+    problems = []
+    parsed = yaml.load(edited, problems)
+    if problems:
+        _field_error(f"{caption}: {problems[0]}", errors)
         return value
     return parsed
 
@@ -341,5 +403,20 @@ def _types(schema: Mapping[str, Any]) -> list[str]:
     return list(declared or ())
 
 
-def update_key(parent_key: str, key: str):
-    return f"{parent_key}.{key}" if parent_key else key
+def handle_array_input(label: str, value, key: str):
+    """Handle input for array types."""
+    # cannot differentiate type here ~ no way to represent array of ints or floats except stringified
+    if not isinstance(value, list):
+        value = [value]
+    assert st_tags is not None, "streamlit_tags is not installed"
+    return st_tags(label=label, value=value, key=key)
+
+
+def update_key(parent_key: str, new_key: str):
+    """Append a new key to an existing parent key, forming a dot-separated string.
+
+    :param parent_key: The existing key string.
+    :param new_key: The new key to append.
+    :return: The concatenated key string.
+    """
+    return f"{parent_key}.{new_key}" if parent_key != "" else new_key

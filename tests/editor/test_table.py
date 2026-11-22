@@ -14,12 +14,12 @@ from snakelit.editor.table import _drop_empty_rows  # noqa: E402
 SCRIPT = """
 import polars as pl
 import streamlit as st
-from snakelit.editor.table import form_table
+from snakelit.editor.table import create_form
 
 if "frame" not in st.session_state:
     st.session_state["frame"] = pl.DataFrame({"sample": ["a"], "count": [1]})
 errors = []
-edited = form_table(st.session_state["frame"], errors, key="t")
+edited = create_form(st.session_state["frame"], key="t", errors=errors)
 st.session_state["edited"] = edited
 st.session_state["frame"] = edited
 st.session_state["errors"] = errors
@@ -44,7 +44,8 @@ def test_renders_the_table_without_errors():
     assert at.session_state["edited"].columns == ["sample", "count"]
 
 
-def test_column_operations_return_the_edited_table():
+def test_column_operations_return_the_edited_table(monkeypatch):
+    monkeypatch.setattr("snakelit.editor.table.sort_items", None)
     at = _app()
 
     at.text_input(key="t-new-column").set_value("extra")
@@ -71,19 +72,12 @@ def test_column_operations_return_the_edited_table():
 
 
 SCHEMA_SCRIPT = """
-import polars as pl
 import streamlit as st
-from snakelit.editor.table import form_table
+from snakelit.editor.table import schema_table
 
-SCHEMA = {
-    "type": "object",
-    "required": ["sample"],
-    "properties": {"sample": {"type": "string"}, "count": {"type": "integer"}},
-}
-if "frame" not in st.session_state:
-    st.session_state["frame"] = pl.DataFrame({"sample": [""], "count": [1]})
+schema = {"type": "object", "required": ["sample"]}
 errors = []
-edited = form_table(st.session_state["frame"], errors, SCHEMA, key="t")
+st.session_state["updated"] = schema_table(b"sample,count\\n,1\\n", errors, schema, key="t")
 st.session_state["errors"] = errors
 """
 
@@ -91,25 +85,32 @@ st.session_state["errors"] = errors
 def test_schema_errors_are_reported():
     at = _app(SCHEMA_SCRIPT)
 
-    assert any("required" in message for message in at.session_state["errors"])
+    assert not at.exception
+    form_errors = at.session_state["errors"]
+    assert any("required" in message for message in form_errors)
+    assert at.session_state["updated"] is None
+    at.radio(key="t-editor-mode").set_value("Text Editor").run()
+    assert not at.exception
+    assert at.session_state["errors"] == form_errors
+    assert at.session_state["updated"] is None
 
 
 def test_load_and_dump_accept_a_suffix_without_dot():
-    from snakelit.utils.table import dump, load
+    from snakelit.utils import table
 
-    frame = load(b"a,b\n1,2\n", suffix="csv")
+    frame = table.load(b"a,b\n1,2\n", suffix="csv")
 
     assert frame is not None
     assert frame.shape == (1, 2)
-    assert dump(frame, "csv") == b"a,b\n1,2\n"
+    assert table.dump(frame, "csv") == b"a,b\n1,2\n"
 
 
 def test_load_reports_an_unsupported_suffix():
-    from snakelit.utils.table import load
+    from snakelit.utils import table
 
     errors: list[str] = []
 
-    assert load(b"a,b\n1,2\n", errors=errors) is None
+    assert table.load(b"a,b\n1,2\n", errors=errors) is None
     assert errors == ["Unsupported table format: (none)"]
 
 
@@ -150,6 +151,7 @@ st.session_state["updated"] = updated
 
     assert not at.exception
     assert at.session_state["updated"] is None
+    assert at.session_state["errors"]
 
 
 ROW_SCHEMA_SCRIPT = """
@@ -173,6 +175,9 @@ def test_schema_table_does_not_read_the_row_schema_as_dtypes():
 
     assert not at.exception
     assert at.session_state["errors"] == []
+    assert not at.code
+    at.toggle(key="t-show-schema").set_value(True).run()
+    assert any("properties" in item.value for item in at.code)
     assert at.radio(key="t-editor-mode").value == "Form"
     assert at.session_state["updated"] is None
 
@@ -186,7 +191,7 @@ def test_schema_table_does_not_read_the_row_schema_as_dtypes():
 RERENDER_SCRIPT = """
 import polars as pl
 import streamlit as st
-from snakelit.editor.table import form_table
+from snakelit.editor.table import create_form
 
 if "frame" not in st.session_state:
     st.session_state["frame"] = pl.DataFrame({"sample": ["a"]})
@@ -194,7 +199,7 @@ if "visible" not in st.session_state:
     st.session_state["visible"] = True
 errors = []
 if st.session_state["visible"]:
-    edited = form_table(st.session_state["frame"], errors, key="t")
+    edited = create_form(st.session_state["frame"], key="t", errors=errors)
     st.session_state["edited"] = edited
 """
 
@@ -218,18 +223,18 @@ def test_form_uses_the_current_frame_after_its_editor_closed():
 COERCED_SCRIPT = """
 import polars as pl
 import streamlit as st
-from snakelit.editor.table import form_table
+from snakelit.editor.table import create_form
 
 SCHEMA = {"type": "object", "properties": {"count": {"type": "integer"}}}
 if "frame" not in st.session_state:
     st.session_state["frame"] = pl.DataFrame({"count": ["1"]})
 errors = []
-edited = form_table(st.session_state["frame"], errors, SCHEMA, key="t")
+edited = create_form(st.session_state["frame"], SCHEMA, key="t", errors=errors)
 st.session_state["edited"] = edited
 """
 
 
-def test_form_table_coerces_before_and_keeps_the_copy_typed():
+def test_create_form_coerces_before_and_keeps_the_copy_typed():
     import polars as pl
 
     at = _app(COERCED_SCRIPT)
@@ -259,3 +264,22 @@ def test_drop_empty_rows_drops_only_fully_blank_rows():
         "tags": [["x"]],
     }
     assert kept.schema == frame.schema
+
+
+def test_unchanged_parquet_validates_original_bytes_in_form_only_mode():
+    at = _app("""
+import streamlit as st
+import polars as pl
+from snakelit.editor.table import schema_table
+from snakelit.utils import table
+
+data = table.dump(pl.DataFrame({"count": [1]}), "parquet")
+schema = {"type": "object", "required": ["missing"]}
+errors = []
+st.session_state.updated = schema_table(data, errors, schema, format="parquet")
+st.session_state.errors = errors
+""")
+    assert not at.exception
+    assert not at.radio
+    assert at.session_state.updated is None
+    assert any("missing" in message for message in at.session_state.errors)

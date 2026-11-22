@@ -5,8 +5,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from snakelit.utils.json import dump  # noqa: E402
+from snakelit.utils import json, yaml  # noqa: E402
 
 
 def test_dump():
-    assert dump({"a": 1}) == '{\n  "a": 1\n}\n'
+    assert json.dump({"a": 1}) == '{\n  "a": 1\n}\n'
+
+
+def test_json_output_round_trips_through_yaml_loader():
+    assert yaml.load(json.dump({"sample": "001"})) == {"sample": "001"}

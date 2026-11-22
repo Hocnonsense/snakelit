@@ -1,6 +1,6 @@
 """Editable Polars-backed table widgets.
 
-``form_table`` seeds ``st.data_editor`` from the frame it is given; the
+``create_form`` seeds ``st.data_editor`` from the frame it is given; the
 editor's widget state carries the edits, and the caller decides where the
 returned frame goes.  ``column_controls`` renders icon add/rename/remove/move
 popovers that replace the frame before it is edited.  ``schema_table`` adds
@@ -15,10 +15,16 @@ import sys
 import polars as pl
 import streamlit as st
 
+try:
+    from streamlit_sortables import sort_items
+except ModuleNotFoundError as error:
+    if error.name != "streamlit_sortables":
+        raise
+    sort_items = None
+
 from .table_schema import coerce_frame, table_errors
-from .text import schema_text_editor
-from ..utils.table import dump, load
-from ..utils.st_layouts import st_container_maxheight
+from .schema import schema_editor
+from ..utils import table
 
 Control = Callable[[str, pl.DataFrame], tuple[pl.DataFrame, Any] | None]
 """A control returns ``(frame, payload)`` when it fired, else ``None``."""
@@ -43,66 +49,69 @@ def schema_table(
     With ``schema``, the form coerces columns to its declared dtypes and
     validates every row; the schema is never edited.
     """
-    height = 420
     # A file that cannot be read is not an error yet: the text editor takes
     # over below, so this probe keeps its failures to itself.
-    table = load(data, suffix=format, errors=[])
-    textable = format in ("csv", "tsv")
-    if table is not None:
-        if (
-            not textable
-            or st.radio(
-                header,
-                ["Form", "Text Editor"],
-                help="Table editor mode",
-                horizontal=True,
-                key=f"{key}-editor-mode",
-            )
-            == "Form"
-        ):
-            before = len(errors)
-            with st_container_maxheight(f"{key}-form-container", height=height):
-                edited = form_table(table, errors, schema, key=key)
-            if len(errors) > before:
+    frame = table.load(data, suffix=format, errors=[])
+    can_text = format in ("csv", "tsv")
+
+    if frame is None:
+        if not can_text:
+            return errors.append(f"Cannot edit broken {format.upper()} table as text.")
+        render_form = None  # type: ignore
+    else:
+
+        def render_form(problems: list[str]):
+            edited = create_form(frame, schema, key=key, errors=problems)
+            if schema:
+                edited, _ = coerce_frame(edited, schema, problems)
+            st.session_state[f"{key}-data"] = edited
+            if problems or edited.equals(frame):
                 return None
-            # Compare canonical bytes: coercion changes dtypes without changing
-            # the values, and an untouched form must not rewrite the table.
-            updated = dump(edited, format)
-            return None if updated == dump(table, format) else updated
-    elif not textable:
-        st.error(f"Cannot edit broken {format.upper()} table as text.")
-        return None
+            try:
+                updated = table.dump(edited, format)
+                if updated == data or updated == table.dump(frame, format):
+                    return None
+            except pl.exceptions.PolarsError as error:
+                problems.append(str(error))
+                return None
+            return updated
 
-    try:
-        text = data.decode("utf-8")
-    except UnicodeDecodeError:
-        st.error(f"Cannot edit {format.upper()} data as text.")
-        return None
-    updated = schema_text_editor(text, schema, key, height=height)
-    before = len(errors)
-    parsed = load(updated.encode("utf-8"), suffix=format, errors=errors)
-    if parsed is None:
-        return None
-    if schema:
-        parsed, _ = coerce_frame(parsed, schema, errors)
-    errors.extend(table_errors(parsed, schema))
-    if len(errors) > before:
-        return None
-    return None if updated == text else updated.encode("utf-8")
+    def validate_table(contents: bytes, schema: Mapping | None):
+        problems: list[str] = []
+        # The initial probe has already parsed these exact bytes on success.
+        parsed = frame if contents is data else None
+        if parsed is None:
+            parsed = table.load(contents, suffix=format, errors=problems)
+        if parsed is not None and schema:
+            parsed, _ = coerce_frame(parsed, schema, problems)
+            problems.extend(table_errors(parsed, schema))
+        return problems
+
+    return schema_editor(
+        data,
+        errors,
+        schema,
+        header,
+        key=key,
+        format=format,
+        can_text=can_text,
+        render_form=render_form,
+        validate=validate_table,
+    )
 
 
-def form_table(
+def create_form(
     frame: pl.DataFrame,
-    errors: list[str],
     schema: Mapping | None = None,
     *,
     key: str = "table",
     column_config: Mapping | None = None,
+    errors: list[str] | None = None,
 ):
     """Edit ``frame`` and return the edited frame.
 
-    With ``schema``, cells carry its declared dtypes and every row is validated;
-    the schema itself is never edited.
+    A supplied schema sets the initial column dtypes. The caller validates
+    the resulting frame before saving it.
     """
     data_key = f"{key}-data"
     if schema:
@@ -118,30 +127,29 @@ def form_table(
         # stale rows behind.
         st.session_state[data_key] = frame
     change = column_controls(key)
-    edited = editable_table(
+    return editable_table(
         key,
         column_config=column_config,
         reset=reset or bool(change),
     )
 
-    if schema:
-        # strip and format the edited frame to save correctly.
-        edited, _ = coerce_frame(edited, schema, errors)
-        st.session_state[data_key] = edited
-        errors.extend(table_errors(edited, schema))
-    return edited
 
-
+# Shared controls originate in srptn/common/components/table_editor.py.
 def column_controls(
     key: str,
     *,
     controls: Mapping[str, Control] | None = None,
     extras: Mapping[str, Control] | None = None,
 ):
-    """Render column popovers for ``st.session_state[f"{key}-data"]``.
+    """Render icon column popovers for ``st.session_state[f"{key}-data"]``.
 
-    Returns the changes applied, keyed by control name.  ``controls`` replaces
-    the default add/rename/remove/move set; ``extras`` renders more next to it.
+    Returns the changes applied, keyed by control name (``add``/``rename``/
+    ``remove``/``move``, plus any ``extras`` key).  The mapping is empty when
+    nothing changed.
+
+    ``controls`` replaces the default controls; ``extras`` renders additional
+    controls next to them.  Each follows :data:`Control` and is threaded the
+    current ``{key}-data`` frame.
     """
     changes: dict[str, Any] = {}
     calls = dict(controls or _default_controls) | dict(extras or {})
@@ -164,11 +172,14 @@ def editable_table(
     """Render ``st.data_editor`` for ``st.session_state[f"{key}-data"]``.
 
     The current data lives in ``{key}-data``; the edited result is written back
-    there and returned.  Edits accumulate against a separate stable base
+    there and returned.  Edits accumulate against a separate stable **base**
     (``{key}-base``) rather than re-feeding ``{key}-data`` as the editor input,
     which would make edits lag by one run.  Pass ``reset=True`` when the table
     is replaced programmatically (column change, upload, fill, clear) so the
     base is re-seeded and the widget rebuilt.
+
+    With ``drop_empty`` (the default) rows whose cells are all blank are
+    removed, so empty rows added in the editor are not persisted.
     """
     data_key = f"{key}-data"
     base_key = f"{key}-base"
@@ -185,10 +196,25 @@ def editable_table(
         column_config=column_config,
     )
     result = _from_pandas(edited)
-    if drop_empty:
-        result = _drop_empty_rows(result)
+    result = _drop_empty_rows(result) if drop_empty else result
     st.session_state[data_key] = result
     return result
+
+
+def _drop_empty_rows(frame: pl.DataFrame):
+    """Drop rows where every cell is null or blank."""
+    if frame.height == 0 or not frame.columns:
+        return frame
+    if sys.platform == "emscripten" or any(
+        dtype.is_nested() or dtype == pl.Binary for dtype in frame.dtypes
+    ):
+        return _drop_empty_rows_by_value(frame)
+    blank = [
+        pl.col(column).is_null()
+        | (pl.col(column).cast(pl.Utf8).str.strip_chars() == "")
+        for column in frame.columns
+    ]
+    return frame.filter(~pl.all_horizontal(blank))
 
 
 def _from_pandas(frame):
@@ -235,7 +261,7 @@ def _from_pandas(frame):
     return pl.DataFrame(data, schema_overrides=overrides)
 
 
-def _drop_empty_rows(frame: pl.DataFrame):
+def _drop_empty_rows_by_value(frame: pl.DataFrame):
     """Drop rows where every cell is null or blank.
 
     The mask is applied while rebuilding the frame from Python values instead
@@ -258,6 +284,17 @@ def _drop_empty_rows(frame: pl.DataFrame):
         for name in frame.columns
     }
     return pl.DataFrame(data, schema=frame.schema)
+
+
+def _native_column_order(key: str, options: list[str]):
+    selected = st.selectbox("Move column", options, key=f"{key}-move-column")
+    target = st.selectbox("Move before", ["(end)", *options], key=f"{key}-move-target")
+    if not st.button("Move", key=f"{key}-move-button") or target == selected:
+        return options
+    order = [column for column in options if column != selected]
+    index = len(order) if target == "(end)" else order.index(target)
+    order.insert(index, selected)
+    return order
 
 
 def _add_column(key: str, frame: pl.DataFrame):
@@ -306,22 +343,18 @@ def _move_column(key: str, frame: pl.DataFrame):
     options = list(frame.columns)
     with st.popover("", icon=":material/swap_horiz:", help="Reorder columns"):
         if len(options) > 1:
-            selected = st.selectbox("Move column", options, key=f"{key}-move-column")
-            target = st.selectbox(
-                "Move before", ["(end)", *options], key=f"{key}-move-target"
-            )
-            clicked = st.button("Move", key=f"{key}-move-button")
+            if sort_items is None:
+                order = _native_column_order(key, options)
+            else:
+                # Remount after an external change to the column set or order.
+                order = sort_items(
+                    options, direction="vertical", key=f"{key}-order-{options!r}"
+                )
         else:
             st.caption("Need at least two columns to reorder.")
-            return None
-    if not clicked or selected not in options:
-        return None
-    order = [column for column in options if column != selected]
-    index = len(order) if target == "(end)" else order.index(target)
-    order.insert(index, selected)
-    if order == options:
-        return None
-    return frame.select(order), order
+            order = options
+    if list(order) != options and sorted(order) == sorted(options):
+        return frame.select(list(order)), order
 
 
 _default_controls = {

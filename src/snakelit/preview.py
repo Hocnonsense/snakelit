@@ -12,7 +12,7 @@ from .filetypes import (
     suffix,
 )
 from .utils.format import human_size
-from .utils.table import load as load_table
+from .utils import table
 
 
 def text_view(text: str, *, language: str | None = None):
@@ -27,7 +27,7 @@ def image_view(data: bytes):
 def table_view(data: bytes, *, format: str = "csv", **read_kwargs):
     errors: list[str] = []
     try:
-        frame = load_table(data, suffix=format, errors=errors, **read_kwargs)
+        frame = table.load(data, suffix=format, errors=errors, **read_kwargs)
     except ImportError:
         st.error("polars is not installed; cannot preview tables.")
         return

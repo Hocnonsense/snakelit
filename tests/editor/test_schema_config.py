@@ -3,14 +3,16 @@
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
 SCRIPT = """
 import streamlit as st
 from snakelit.editor.config import schema_config
-from snakelit.utils.yaml import dump, load
+from snakelit.utils import yaml
 
 CONFIG = {
     "samples": "samples.tsv",
@@ -39,13 +41,19 @@ SCHEMA = {
 }
 
 errors = []
-updated = schema_config(dump(CONFIG).encode(), errors, SCHEMA, key="cfg")
+updated = schema_config(yaml.dump(CONFIG).encode(), errors, SCHEMA, key="cfg")
 st.session_state["updated"] = updated
 st.session_state["errors"] = errors
 st.session_state["edited"] = (
-    load(updated.decode()) if updated is not None else CONFIG
+    yaml.load(updated.decode()) if updated is not None else CONFIG
 )
 """
+
+
+@pytest.fixture
+def native_text_editor(monkeypatch):
+    """Exercise the editable text-area fallback through AppTest."""
+    monkeypatch.setitem(sys.modules, "streamlit_ace", None)
 
 
 def _app(script=SCRIPT):
@@ -142,8 +150,11 @@ def test_scientific_float_stays_text():
     assert at.session_state["edited"]["threshold"] == "1e-5"
 
 
-def test_text_mode_shows_the_schema_read_only():
+def test_text_mode_shows_the_schema_read_only(native_text_editor):
     at = _app()
+    assert not at.code
+    at.toggle(key="cfg-show-schema").set_value(True).run()
+    assert any("properties" in item.value for item in at.code)
     _by_key(at.radio, "cfg-editor-mode").set_value("Text Editor")
     at.run()
 
@@ -152,7 +163,7 @@ def test_text_mode_shows_the_schema_read_only():
     assert any("properties" in (item.value or "") for item in at.code)
 
 
-def test_text_mode_is_validated_against_the_schema():
+def test_text_mode_is_validated_against_the_schema(native_text_editor):
     at = _app()
     _by_key(at.radio, "cfg-editor-mode").set_value("Text Editor")
     at.run()
@@ -164,7 +175,7 @@ def test_text_mode_is_validated_against_the_schema():
     assert at.session_state["edited"]["samples"] == "samples.tsv"
 
 
-def test_text_mode_returns_no_text_on_invalid_yaml():
+def test_text_mode_returns_no_text_on_invalid_yaml(native_text_editor):
     at = _app()
     _by_key(at.radio, "cfg-editor-mode").set_value("Text Editor")
     at.run()
@@ -178,16 +189,16 @@ def test_text_mode_returns_no_text_on_invalid_yaml():
 RAW_SCRIPT = """
 import streamlit as st
 from snakelit.editor.config import schema_config
-from snakelit.utils.yaml import dump, load
+from snakelit.utils import yaml
 
 CONFIG = {"a": 1}
 
 errors = []
-updated = schema_config(dump(CONFIG).encode(), errors, None, key="raw")
+updated = schema_config(yaml.dump(CONFIG).encode(), errors, None, key="raw")
 st.session_state["updated"] = updated
 st.session_state["errors"] = errors
 st.session_state["edited"] = (
-    load(updated.decode()) if updated is not None else CONFIG
+    yaml.load(updated.decode()) if updated is not None else CONFIG
 )
 """
 
@@ -199,7 +210,7 @@ def test_without_schema_infers_a_form_from_the_config():
     assert _by_key(at.number_input, "raw-a").value == 1
 
 
-def test_invalid_raw_yaml_returns_no_text():
+def test_invalid_raw_yaml_returns_no_text(native_text_editor):
     at = _app(RAW_SCRIPT)
     _by_key(at.radio, "raw-editor-mode").set_value("Text Editor")
     at.run()
@@ -221,7 +232,7 @@ st.session_state["errors"] = errors
 """
 
 
-def test_broken_text_opens_in_the_text_editor_and_can_be_repaired():
+def test_broken_text_opens_in_the_text_editor_and_can_be_repaired(native_text_editor):
     at = _app(BROKEN_SCRIPT)
 
     assert [item.key for item in at.radio] == []
@@ -273,3 +284,110 @@ def test_nested_mappings_render_as_tabs():
 
     assert not at.exception
     assert "params" in [tab.label for tab in at.tabs]
+
+
+def test_string_list_keeps_yaml_looking_values_after_an_edit():
+    at = _app(
+        SCRIPT.replace('"values": [1, 2]', '"values": ["001", "true"]').replace(
+            '"items": {"type": "integer"}', '"items": {"type": "string"}'
+        )
+    )
+    assert at.session_state["updated"] is None
+    _by_key(at.text_area, "cfg-values").set_value("001\ntrue\n001")
+    at.run()
+    assert at.session_state["edited"]["values"] == ["001", "true", "001"]
+
+
+def test_form_preserves_untouched_yaml_bytes():
+    script = RAW_SCRIPT.replace(
+        "yaml.dump(CONFIG).encode()", "b'# comment\\na: 1  # unit\\n'"
+    )
+    assert _app(script).session_state["updated"] is None
+
+
+def test_form_writes_changed_json_as_json():
+    import json
+
+    script = RAW_SCRIPT.replace(
+        "yaml.dump(CONFIG).encode()", """b'{"a": 1}'"""
+    ).replace('key="raw"', 'key="raw", format="json"')
+    at = _app(script)
+    assert at.session_state["updated"] is None
+    at.number_input(key="raw-a").set_value(3).run()
+    assert json.loads(at.session_state["updated"]) == {"a": 3}
+
+
+def test_clearing_valid_text_returns_empty_bytes(native_text_editor):
+    at = _app(RAW_SCRIPT)
+    at.radio(key="raw-editor-mode").set_value("Text Editor").run()
+    at.text_area(key="raw-editor").set_value("").run()
+    assert not at.exception
+    assert at.session_state["errors"] == []
+    assert at.session_state["updated"] == b""
+
+
+def test_text_mode_returns_original_formatting_with_the_edit(native_text_editor):
+    at = _app(RAW_SCRIPT)
+    at.radio(key="raw-editor-mode").set_value("Text Editor").run()
+    text = "# unit\na: 2  # count\n"
+    at.text_area(key="raw-editor").set_value(text).run()
+    assert at.session_state["updated"] == text.encode()
+    assert at.session_state["errors"] == []
+
+
+def test_invalid_field_blocks_other_form_changes():
+    at = _app()
+    at.text_area(key="cfg-values").set_value("[")
+    at.number_input(key="cfg-threads").set_value(7).run()
+    assert not at.exception
+    assert at.session_state["errors"]
+    assert at.session_state["updated"] is None
+
+
+def test_yaml_null_is_validated_as_a_value(native_text_editor):
+    at = _app()
+    at.radio(key="cfg-editor-mode").set_value("Text Editor").run()
+    at.text_area(key="cfg-editor").set_value("null").run()
+    assert not at.exception
+    assert at.session_state["errors"]
+    assert at.session_state["updated"] is None
+
+
+def _root_app(source, schema=None, format="yaml"):
+    return _app(f"""
+import streamlit as st
+from snakelit.editor.config import schema_config
+errors = []
+st.session_state.updated = schema_config({source!r}, errors, {schema!r}, key="root", format={format!r})
+st.session_state.errors = errors
+""")
+
+
+def test_float_root_is_editable_without_rewriting_untouched_yaml():
+    from snakelit.utils import yaml
+
+    at = _root_app(b"0.50 # threshold")
+    assert not at.exception
+    assert at.radio[0].value == "Form"
+    assert at.session_state.updated is None
+    at.number_input[0].set_value(0.8).run()
+    assert yaml.load(at.session_state["updated"].decode("utf-8")) == 0.8
+
+
+def test_list_root_writes_a_json_array_and_validates_items():
+    from snakelit.utils import yaml
+
+    at = _root_app(b"[1, 2]", {"type": "array", "items": {"type": "integer"}}, "json")
+    assert at.session_state.updated is None
+    at.text_area[0].set_value("3\n4").run()
+    assert yaml.load(at.session_state["updated"].decode("utf-8")) == [3, 4]
+    at.text_area[0].set_value("3\nwrong").run()
+    assert at.session_state.errors
+    assert at.session_state.updated is None
+
+
+def test_scalar_root_schema_mismatch_does_not_change_the_value():
+    at = _root_app(b"0.5", {"type": "object"})
+    assert at.number_input[0].value == 0.5
+    assert at.session_state.errors
+    assert at.session_state.updated is None
